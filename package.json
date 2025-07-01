@@ -7,9 +7,12 @@
     "test": "tests"
   },
   "scripts": {
+    "test": "jest",
     "dev": "ts-node src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test:payment": "ts-node tests/paymentApi.test.ts",
+    "test:webhook": "jest tests/webhookApi.test.ts"
   },
   "repository": {
     "type": "git",
@@ -35,8 +38,13 @@
     "@types/axios": "^0.9.36",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/jest": "^30.0.0",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^24.0.7",
     "@types/node-fetch": "^2.6.12",
+    "jest": "^30.0.3",
+    "mocha": "^11.7.1",
+    "ts-jest": "^29.4.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }

@@ -4,6 +4,7 @@
 import axios from 'axios';
 import { execSync } from 'child_process';
 import dotenv from 'dotenv';
+import fs from 'fs';
 dotenv.config();
 
 const PORT = process.env.PORT || '3001';
@@ -39,6 +40,7 @@ let redirect_flow_id = '';
 let mandate_id = '';
 let customer_id = '';
 let subscription_id = '';
+let payment_id = '';
 
 async function startRedirectFlow() {
   console.log('--- Start Redirect Flow ---');
@@ -81,6 +83,7 @@ async function createPayment() {
   const res = await axios.post(url, payload, { headers });
   const data: any = res.data;
   console.log('Response:', data);
+  payment_id = data.payment_id;
 }
 
 async function createSubscription() {
@@ -118,6 +121,14 @@ async function runAll() {
     await createPayment();
     await createSubscription();
     await listSubscriptions();
+    // Save IDs for use in webhook tests
+    fs.writeFileSync('tests/test-output.json', JSON.stringify({
+      mandate_id,
+      customer_id,
+      subscription_id,
+      payment_id
+    }, null, 2));
+    console.log('Saved test IDs to tests/test-output.json');
     console.log('All payment API tests completed.');
   } catch (err: any) {
     console.error('Test failed:');
