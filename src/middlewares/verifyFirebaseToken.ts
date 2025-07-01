@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import admin from '../firebaseAdmin';
 
 export const verifyFirebaseToken = async (req: Request, res: Response, next: NextFunction) => {
+  console.log("verifyFirebaseToken called");
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -14,6 +15,7 @@ export const verifyFirebaseToken = async (req: Request, res: Response, next: Nex
     (req as any).user = decodedToken;
     return next();
   } catch (err) {
+    console.error('Token verification failed:', err);
     res.status(401).json({ error: 'Invalid or expired token.' });
   }
 }; 
