@@ -19,15 +19,25 @@ export const startRedirectFlow = async (req: Request, res: Response) => {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
+    // Fetch user profile from Firestore
+    const userDoc = await db.collection('users').doc(userId).get();
+    let firstName = '', lastName = '', userEmail = email;
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      firstName = userData?.firstName || '';
+      lastName = userData?.lastName || '';
+      userEmail = userData?.email || email;
+    } else if (name) {
+      const nameParts = name.trim().split(' ');
+      firstName = nameParts[0] || '';
+      lastName = nameParts.slice(1).join(' ') || '';
+    }
     const session_token = Math.random().toString(36).substring(2);
-    const nameParts = name.trim().split(' ');
-    const given_name = nameParts[0] || '';
-    const family_name = nameParts.slice(1).join(' ') || '';
     const redirectFlow = await client.redirectFlows.create({
       description: 'Direct Debit Setup',
       session_token,
       success_redirect_url: process.env.GOCARDLESS_SUCCESS_URL || 'http://localhost:3001/success',
-      prefilled_customer: { given_name, family_name, email }
+      prefilled_customer: { given_name: firstName, family_name: lastName, email: userEmail }
     });
     // Store flow data in Firestore
     await db.collection('users').doc(userId).collection('payments').doc('current_flow').set({
@@ -79,6 +89,14 @@ export const confirmRedirectFlow = async (req: Request, res: Response) => {
       created_at: admin.firestore.FieldValue.serverTimestamp(),
       status: 'active'
     });
+    // Also store GoCardless IDs in user's main profile for easy lookup
+    await db.collection('users').doc(userId).set({
+      gocardless: {
+        customer_id,
+        mandate_id,
+        linked_at: admin.firestore.FieldValue.serverTimestamp()
+      }
+    }, { merge: true });
     // Update flow status
     await db.collection('users').doc(userId).collection('payments').doc('current_flow').update({
       mandate_id,
@@ -94,11 +112,21 @@ export const confirmRedirectFlow = async (req: Request, res: Response) => {
 
 export const createPayment = async (req: Request, res: Response) => {
   try {
-    const { amount, currency, mandate_id } = req.body;
+    let { amount, currency, mandate_id } = req.body;
     const userId = getUserId(req);
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
+    }
+    // If mandate_id not provided, look it up from user's profile
+    if (!mandate_id) {
+      const userDoc = await db.collection('users').doc(userId).get();
+      const userData = userDoc.exists ? userDoc.data() : null;
+      mandate_id = userData?.gocardless?.mandate_id;
+      if (!mandate_id) {
+        res.status(400).json({ error: 'No GoCardless mandate linked to user. Please link your account first.' });
+        return;
+      }
     }
     const payment = await client.payments.create({
       amount: parseInt(amount),
@@ -120,11 +148,21 @@ export const createPayment = async (req: Request, res: Response) => {
 
 export const createSubscription = async (req: Request, res: Response) => {
   try {
-    const { amount, currency, mandate_id, interval_unit, interval, name } = req.body;
+    let { amount, currency, mandate_id, interval_unit, interval, name } = req.body;
     const userId = getUserId(req);
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
+    }
+    // If mandate_id not provided, look it up from user's profile
+    if (!mandate_id) {
+      const userDoc = await db.collection('users').doc(userId).get();
+      const userData = userDoc.exists ? userDoc.data() : null;
+      mandate_id = userData?.gocardless?.mandate_id;
+      if (!mandate_id) {
+        res.status(400).json({ error: 'No GoCardless mandate linked to user. Please link your account first.' });
+        return;
+      }
     }
     const subscription = await client.subscriptions.create({
       amount: parseInt(amount),
