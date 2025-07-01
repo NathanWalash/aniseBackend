@@ -23,13 +23,16 @@
   },
   "homepage": "https://github.com/NathanWalash/aniseBackend#readme",
   "dependencies": {
+    "axios": "^1.10.0",
     "cors": "^2.8.5",
     "dotenv": "^17.0.0",
     "express": "^5.1.0",
     "firebase-admin": "^13.4.0",
+    "gocardless-nodejs": "^5.3.0",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
+    "@types/axios": "^0.9.36",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.7",
