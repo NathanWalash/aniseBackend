@@ -2,6 +2,10 @@ import { Request, Response } from 'express';
 import { verifyTransaction } from '../utils/verifyTransaction';
 import admin from '../firebaseAdmin';
 import DaoFactoryAbiJson from '../abis/DaoFactory.json';
+import DaoKernelAbiJson from '../abis/DaoKernel.json';
+import ProposalVotingModuleAbiJson from '../abis/ProposalVotingModule.json';
+import ClaimVotingModuleAbiJson from '../abis/ClaimVotingModule.json';
+import MemberModuleAbiJson from '../abis/MemberModule.json';
 import { ethers } from 'ethers';
 
 const db = admin.firestore();
@@ -10,11 +14,12 @@ const DaoFactoryAbi = DaoFactoryAbiJson.abi || DaoFactoryAbiJson;
 // POST /api/daos - Create DAO
 export const createDao = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { metadata, txHash, creatorUid } = req.body;
-    console.log('[createDao] Received request', { metadata, txHash, creatorUid });
-    if (!metadata || !txHash) {
-      console.warn('[createDao] Missing metadata or txHash');
-      res.status(400).json({ error: 'Missing metadata or txHash' });
+    const { metadata, txHash, creatorUid, modules } = req.body;
+    // modules: { MemberModule: {config: {...}}, ProposalVotingModule: {config: {...}}, ... }
+    console.log('[createDao] Received request', { metadata, txHash, creatorUid, modules });
+    if (!metadata || !txHash || !modules) {
+      console.warn('[createDao] Missing metadata, txHash, or modules');
+      res.status(400).json({ error: 'Missing metadata, txHash, or modules' });
       return;
     }
     // 1. Verify transaction
@@ -24,28 +29,25 @@ export const createDao = async (req: Request, res: Response): Promise<void> => {
     // 2. Parse DaoCreated event
     const iface = new ethers.Interface(DaoFactoryAbi);
     let daoAddress = null;
-    let modules = [];
     for (const log of receipt.logs) {
       try {
         const parsed = iface.parseLog(log);
         if (parsed && parsed.name === 'DaoCreated') {
           daoAddress = parsed.args.dao;
-          modules = parsed.args.modules;
           break;
         }
       } catch (e) { /* not this event */ }
     }
     if (!daoAddress) throw new Error('DaoCreated event not found in logs');
-    // 3. Store DAO document in Firestore
+    // 3. Store DAO document in Firestore, using modules from frontend
     const daoDoc = {
       daoAddress,
       creator: receipt.from,
       metadata,
       txHash,
       blockNumber: receipt.blockNumber,
-      treasuryModule: modules[modules.length - 1] || '', // last module is usually treasury
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      modules: modules, // for debugging/inspection
+      modules, // <-- directly from frontend, keyed by module type
     };
     await db.collection('daos').doc(daoAddress).set(daoDoc);
     // 4. Initialize members subcollection with creator as admin
