@@ -3,7 +3,8 @@ import admin from '../firebaseAdmin';
 
 const db = admin.firestore();
 
-// GET /api/daos/:daoAddress/members - List all members (with roles, joinedAt, etc.)
+// GET /api/daos/:daoAddress/members - List all members
+// Returns all members (role, joinedAt, uid) from 'daos/{daoAddress}/members'.
 export const listMembers = async (req: Request, res: Response) => {
   try {
     const { daoAddress } = req.params;
@@ -16,6 +17,7 @@ export const listMembers = async (req: Request, res: Response) => {
 };
 
 // GET /api/daos/:daoAddress/members/:memberAddress - Member profile/role in DAO
+// Returns a single member's profile/role from 'daos/{daoAddress}/members/{walletAddress}'.
 export const getMember = async (req: Request, res: Response) => {
   try {
     const { daoAddress, memberAddress } = req.params;
@@ -27,7 +29,8 @@ export const getMember = async (req: Request, res: Response) => {
   }
 };
 
-// GET /api/daos/:daoAddress/join-requests - List pending join requests (admin only)
+// GET /api/daos/:daoAddress/join-requests - List pending join requests
+// Returns all join requests (status, uid, timestamps) from 'daos/{daoAddress}/joinRequests'.
 export const listJoinRequests = async (req: Request, res: Response) => {
   try {
     const { daoAddress } = req.params;

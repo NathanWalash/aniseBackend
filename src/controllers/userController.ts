@@ -59,6 +59,7 @@ export const connectWallet = async (req: Request, res: Response) => {
 };
 
 // GET /api/users/:userId/daos - List DAOs a user is a member/admin of
+// Returns all DAOs where the user's wallet address is present in the members subcollection.
 export const getUserDaos = async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
@@ -83,6 +84,7 @@ export const getUserDaos = async (req: Request, res: Response) => {
 };
 
 // GET /api/users/:userId/token-balance - Get user's token balance (live from Amoy RPC)
+// Returns the user's token balance by querying the blockchain using their wallet address from Firestore.
 export const getUserTokenBalance = async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
@@ -106,6 +108,7 @@ export const getUserTokenBalance = async (req: Request, res: Response) => {
 };
 
 // GET /api/users/:userId/notifications - List notifications for a user (future)
+// Returns all notifications for a user from 'users/{userId}/notifications'.
 export const getUserNotifications = async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;

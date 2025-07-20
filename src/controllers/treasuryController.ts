@@ -4,6 +4,7 @@ import admin from '../firebaseAdmin';
 const db = admin.firestore();
 
 // GET /api/daos/:daoAddress/treasury - Treasury info
+// Returns treasury info (token address, balance, last updated) from 'daos/{daoAddress}/treasury'.
 export const getTreasury = async (req: Request, res: Response) => {
   try {
     const { daoAddress } = req.params;
@@ -16,6 +17,7 @@ export const getTreasury = async (req: Request, res: Response) => {
 };
 
 // GET /api/daos/:daoAddress/treasury/transactions - List treasury transactions
+// Returns all treasury transactions (deposits, withdrawals, payouts) from 'daos/{daoAddress}/treasury/transactions'.
 export const listTreasuryTransactions = async (req: Request, res: Response) => {
   try {
     const { daoAddress } = req.params;

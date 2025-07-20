@@ -65,6 +65,7 @@ export const createDao = async (req: Request, res: Response) => {
 };
 
 // GET /api/daos - List/search all DAOs
+// Returns a paginated list of all DAOs from the 'daos' collection, ordered by creation time.
 export const listDaos = async (req: Request, res: Response) => {
   try {
     const { limit = 20, startAfter } = req.query;
@@ -82,6 +83,7 @@ export const listDaos = async (req: Request, res: Response) => {
 };
 
 // GET /api/daos/:daoAddress - Get DAO metadata/details
+// Returns metadata and config for a single DAO from 'daos/{daoAddress}'.
 export const getDao = async (req: Request, res: Response) => {
   try {
     const { daoAddress } = req.params;
@@ -94,6 +96,7 @@ export const getDao = async (req: Request, res: Response) => {
 };
 
 // GET /api/daos/:daoAddress/modules - List modules for this DAO
+// Returns the modules array (addresses, types, config) for a DAO from 'daos/{daoAddress}.modules'.
 export const getDaoModules = async (req: Request, res: Response) => {
   try {
     const { daoAddress } = req.params;

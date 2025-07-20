@@ -3,7 +3,8 @@ import admin from '../firebaseAdmin';
 
 const db = admin.firestore();
 
-// GET /api/daos/:daoAddress/proposals - List all proposals (with status, pagination)
+// GET /api/daos/:daoAddress/proposals - List all proposals
+// Returns all proposals (status, threshold, votes, etc.) from 'daos/{daoAddress}/proposals'.
 export const listProposals = async (req: Request, res: Response) => {
   try {
     const { daoAddress } = req.params;
@@ -22,6 +23,7 @@ export const listProposals = async (req: Request, res: Response) => {
 };
 
 // GET /api/daos/:daoAddress/proposals/:proposalId - Proposal details
+// Returns a single proposal's details from 'daos/{daoAddress}/proposals/{proposalId}'.
 export const getProposal = async (req: Request, res: Response) => {
   try {
     const { daoAddress, proposalId } = req.params;
@@ -33,7 +35,8 @@ export const getProposal = async (req: Request, res: Response) => {
   }
 };
 
-// GET /api/daos/:daoAddress/proposals/:proposalId/votes - List votes on a proposal (if votes are stored)
+// GET /api/daos/:daoAddress/proposals/:proposalId/votes - List votes on a proposal
+// Returns the full votes object for a proposal from 'votes' field in 'daos/{daoAddress}/proposals/{proposalId}'.
 export const getProposalVotes = async (req: Request, res: Response) => {
   try {
     const { daoAddress, proposalId } = req.params;

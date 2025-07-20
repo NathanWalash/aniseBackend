@@ -3,7 +3,8 @@ import admin from '../firebaseAdmin';
 
 const db = admin.firestore();
 
-// GET /api/daos/:daoAddress/claims - List all claims (with status, pagination)
+// GET /api/daos/:daoAddress/claims - List all claims
+// Returns all claims (status, threshold, votes, etc.) from 'daos/{daoAddress}/claims'.
 export const listClaims = async (req: Request, res: Response) => {
   try {
     const { daoAddress } = req.params;
@@ -22,6 +23,7 @@ export const listClaims = async (req: Request, res: Response) => {
 };
 
 // GET /api/daos/:daoAddress/claims/:claimId - Claim details
+// Returns a single claim's details from 'daos/{daoAddress}/claims/{claimId}'.
 export const getClaim = async (req: Request, res: Response) => {
   try {
     const { daoAddress, claimId } = req.params;
@@ -33,7 +35,8 @@ export const getClaim = async (req: Request, res: Response) => {
   }
 };
 
-// GET /api/daos/:daoAddress/claims/:claimId/votes - List votes on a claim (if votes are stored)
+// GET /api/daos/:daoAddress/claims/:claimId/votes - List votes on a claim
+// Returns the full votes object for a claim from 'votes' field in 'daos/{daoAddress}/claims/{claimId}'.
 export const getClaimVotes = async (req: Request, res: Response) => {
   try {
     const { daoAddress, claimId } = req.params;
