@@ -102,7 +102,8 @@ export const getProfile = async (req: Request, res: Response): Promise<void> => 
       res.status(404).json({ error: 'Profile not found' });
       return;
     }
-    res.json(docSnap.data());
+    // Add uid to the returned profile
+    res.json({ ...docSnap.data(), uid: user.uid });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
