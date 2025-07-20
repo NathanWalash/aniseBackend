@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { listMembers, getMember, listJoinRequests } from '../controllers/memberController';
 
 const router = Router();
 
@@ -9,19 +10,13 @@ router.post('/:daoAddress/join-requests', (req, res) => {
   res.status(501).json({ error: 'Not implemented' });
 });
 
-// GET /api/daos/:daoAddress/members - List members
-// TODO: Fetch from Firestore
-router.get('/:daoAddress/members', (req, res) => {
-  // TODO: Implement list members
-  res.status(501).json({ error: 'Not implemented' });
-});
+// GET /api/daos/:daoAddress/members - List all members
+router.get('/:daoAddress/members', listMembers);
+// GET /api/daos/:daoAddress/members/:memberAddress - Member profile/role in DAO
+router.get('/:daoAddress/members/:memberAddress', getMember);
 
 // GET /api/daos/:daoAddress/join-requests - List pending join requests
-// TODO: Fetch from Firestore
-router.get('/:daoAddress/join-requests', (req, res) => {
-  // TODO: Implement list join requests
-  res.status(501).json({ error: 'Not implemented' });
-});
+router.get('/:daoAddress/join-requests', listJoinRequests);
 
 // POST /api/daos/:daoAddress/join-requests/:requestId/approve - Approve join request
 // TODO: Accept tx hash, verify, update Firestore

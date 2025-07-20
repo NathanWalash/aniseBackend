@@ -62,4 +62,46 @@ export const createDao = async (req: Request, res: Response) => {
     console.error('[createDao] Error:', err);
     res.status(400).json({ error: err.message });
   }
+};
+
+// GET /api/daos - List/search all DAOs
+export const listDaos = async (req: Request, res: Response) => {
+  try {
+    const { limit = 20, startAfter } = req.query;
+    let query = db.collection('daos').orderBy('createdAt', 'desc').limit(Number(limit));
+    if (startAfter) {
+      const startDoc = await db.collection('daos').doc(String(startAfter)).get();
+      if (startDoc.exists) query = query.startAfter(startDoc);
+    }
+    const snapshot = await query.get();
+    const daos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json({ daos });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /api/daos/:daoAddress - Get DAO metadata/details
+export const getDao = async (req: Request, res: Response) => {
+  try {
+    const { daoAddress } = req.params;
+    const doc = await db.collection('daos').doc(daoAddress).get();
+    if (!doc.exists) return res.status(404).json({ error: 'DAO not found' });
+    res.json({ id: doc.id, ...doc.data() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /api/daos/:daoAddress/modules - List modules for this DAO
+export const getDaoModules = async (req: Request, res: Response) => {
+  try {
+    const { daoAddress } = req.params;
+    const doc = await db.collection('daos').doc(daoAddress).get();
+    if (!doc.exists) return res.status(404).json({ error: 'DAO not found' });
+    const data = doc.data();
+    res.json({ modules: data?.modules || [] });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 }; 

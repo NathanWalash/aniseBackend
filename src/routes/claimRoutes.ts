@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { listClaims, getClaim, getClaimVotes } from '../controllers/claimController';
 
 const router = Router();
 
@@ -10,18 +11,11 @@ router.post('/:daoAddress/claims', (req, res) => {
 });
 
 // GET /api/daos/:daoAddress/claims - List claims
-// TODO: Fetch from Firestore
-router.get('/:daoAddress/claims', (req, res) => {
-  // TODO: Implement list claims
-  res.status(501).json({ error: 'Not implemented' });
-});
-
+router.get('/:daoAddress/claims', listClaims);
 // GET /api/daos/:daoAddress/claims/:claimId - Claim details
-// TODO: Fetch from Firestore
-router.get('/:daoAddress/claims/:claimId', (req, res) => {
-  // TODO: Implement get claim details
-  res.status(501).json({ error: 'Not implemented' });
-});
+router.get('/:daoAddress/claims/:claimId', getClaim);
+// GET /api/daos/:daoAddress/claims/:claimId/votes - List votes on a claim
+router.get('/:daoAddress/claims/:claimId/votes', getClaimVotes);
 
 // POST /api/daos/:daoAddress/claims/:claimId/vote - Vote on claim
 // TODO: Accept tx hash, verify, update Firestore, check for payout

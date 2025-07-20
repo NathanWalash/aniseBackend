@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { listProposals, getProposal, getProposalVotes } from '../controllers/proposalController';
 
 const router = Router();
 
@@ -10,18 +11,11 @@ router.post('/:daoAddress/proposals', (req, res) => {
 });
 
 // GET /api/daos/:daoAddress/proposals - List proposals
-// TODO: Fetch from Firestore
-router.get('/:daoAddress/proposals', (req, res) => {
-  // TODO: Implement list proposals
-  res.status(501).json({ error: 'Not implemented' });
-});
-
+router.get('/:daoAddress/proposals', listProposals);
 // GET /api/daos/:daoAddress/proposals/:proposalId - Proposal details
-// TODO: Fetch from Firestore
-router.get('/:daoAddress/proposals/:proposalId', (req, res) => {
-  // TODO: Implement get proposal details
-  res.status(501).json({ error: 'Not implemented' });
-});
+router.get('/:daoAddress/proposals/:proposalId', getProposal);
+// GET /api/daos/:daoAddress/proposals/:proposalId/votes - List votes on a proposal
+router.get('/:daoAddress/proposals/:proposalId/votes', getProposalVotes);
 
 // POST /api/daos/:daoAddress/proposals/:proposalId/vote - Vote on proposal
 // TODO: Accept tx hash, verify, update Firestore
