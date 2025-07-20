@@ -1,14 +1,11 @@
 import { Router } from 'express';
-import { listProposals, getProposal, getProposalVotes } from '../controllers/proposalController';
+import { listProposals, getProposal, getProposalVotes, createProposal, voteOnProposal } from '../controllers/proposalController';
 
 const router = Router();
 
 // POST /api/daos/:daoAddress/proposals - Create proposal
-// TODO: Accept tx hash, verify, add to Firestore
-router.post('/:daoAddress/proposals', (req, res) => {
-  // TODO: Implement create proposal logic
-  res.status(501).json({ error: 'Not implemented' });
-});
+// Frontend: User submits proposal after blockchain tx.
+router.post('/:daoAddress/proposals', createProposal);
 
 // GET /api/daos/:daoAddress/proposals - List proposals
 router.get('/:daoAddress/proposals', listProposals);
@@ -18,10 +15,7 @@ router.get('/:daoAddress/proposals/:proposalId', getProposal);
 router.get('/:daoAddress/proposals/:proposalId/votes', getProposalVotes);
 
 // POST /api/daos/:daoAddress/proposals/:proposalId/vote - Vote on proposal
-// TODO: Accept tx hash, verify, update Firestore
-router.post('/:daoAddress/proposals/:proposalId/vote', (req, res) => {
-  // TODO: Implement vote on proposal
-  res.status(501).json({ error: 'Not implemented' });
-});
+// Frontend: User votes on proposal after blockchain tx. Backend must update votes, approvals/rejections, and status based on threshold.
+router.post('/:daoAddress/proposals/:proposalId/vote', voteOnProposal);
 
 export default router; 

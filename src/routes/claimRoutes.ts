@@ -1,14 +1,11 @@
 import { Router } from 'express';
-import { listClaims, getClaim, getClaimVotes } from '../controllers/claimController';
+import { listClaims, getClaim, getClaimVotes, createClaim, voteOnClaim } from '../controllers/claimController';
 
 const router = Router();
 
 // POST /api/daos/:daoAddress/claims - Create claim
-// TODO: Accept tx hash, verify, add to Firestore
-router.post('/:daoAddress/claims', (req, res) => {
-  // TODO: Implement create claim logic
-  res.status(501).json({ error: 'Not implemented' });
-});
+// Frontend: User submits claim after blockchain tx.
+router.post('/:daoAddress/claims', createClaim);
 
 // GET /api/daos/:daoAddress/claims - List claims
 router.get('/:daoAddress/claims', listClaims);
@@ -18,10 +15,7 @@ router.get('/:daoAddress/claims/:claimId', getClaim);
 router.get('/:daoAddress/claims/:claimId/votes', getClaimVotes);
 
 // POST /api/daos/:daoAddress/claims/:claimId/vote - Vote on claim
-// TODO: Accept tx hash, verify, update Firestore, check for payout
-router.post('/:daoAddress/claims/:claimId/vote', (req, res) => {
-  // TODO: Implement vote on claim
-  res.status(501).json({ error: 'Not implemented' });
-});
+// Frontend: User votes on claim after blockchain tx. Backend must update votes, approvals/rejections, status, and check treasury for payout.
+router.post('/:daoAddress/claims/:claimId/vote', voteOnClaim);
 
 export default router; 

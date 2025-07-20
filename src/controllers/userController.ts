@@ -6,7 +6,7 @@ const db = admin.firestore();
 const AMOY_RPC_URL = 'https://polygon-amoy.infura.io/v3/e3899c2e9571490db9a718222ccf6649';
 
 // POST /api/users/wallet/connect
-export const connectWallet = async (req: Request, res: Response) => {
+export const connectWallet = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = (req as any).user;
     if (!user || !user.uid) {
@@ -60,14 +60,20 @@ export const connectWallet = async (req: Request, res: Response) => {
 
 // GET /api/users/:userId/daos - List DAOs a user is a member/admin of
 // Returns all DAOs where the user's wallet address is present in the members subcollection.
-export const getUserDaos = async (req: Request, res: Response) => {
+export const getUserDaos = async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId } = req.params;
     // Get user's wallet address from Firestore
     const userDoc = await db.collection('users').doc(userId).get();
-    if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
+    if (!userDoc.exists) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
     const walletAddress = userDoc.data()?.wallet?.address;
-    if (!walletAddress) return res.status(400).json({ error: 'User has no linked wallet' });
+    if (!walletAddress) {
+      res.status(400).json({ error: 'User has no linked wallet' });
+      return;
+    }
     // Query all DAOs and filter for membership
     const daosSnap = await db.collection('daos').get();
     const daos = [];
@@ -85,18 +91,27 @@ export const getUserDaos = async (req: Request, res: Response) => {
 
 // GET /api/users/:userId/token-balance - Get user's token balance (live from Amoy RPC)
 // Returns the user's token balance by querying the blockchain using their wallet address from Firestore.
-export const getUserTokenBalance = async (req: Request, res: Response) => {
+export const getUserTokenBalance = async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId } = req.params;
     // Get user's wallet address from Firestore
     const userDoc = await db.collection('users').doc(userId).get();
-    if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
+    if (!userDoc.exists) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
     const walletAddress = userDoc.data()?.wallet?.address;
-    if (!walletAddress) return res.status(400).json({ error: 'User has no linked wallet' });
+    if (!walletAddress) {
+      res.status(400).json({ error: 'User has no linked wallet' });
+      return;
+    }
     // Get token address from DAO or config (for now, assume one token)
     // TODO: Make this dynamic if needed
     const tokenAddress = process.env.TOKEN_ADDRESS;
-    if (!tokenAddress) return res.status(500).json({ error: 'Token address not configured' });
+    if (!tokenAddress) {
+      res.status(500).json({ error: 'Token address not configured' });
+      return;
+    }
     const provider = new ethers.JsonRpcProvider(AMOY_RPC_URL);
     const abi = ["function balanceOf(address) view returns (uint256)"];
     const token = new ethers.Contract(tokenAddress, abi, provider);
@@ -109,7 +124,7 @@ export const getUserTokenBalance = async (req: Request, res: Response) => {
 
 // GET /api/users/:userId/notifications - List notifications for a user (future)
 // Returns all notifications for a user from 'users/{userId}/notifications'.
-export const getUserNotifications = async (req: Request, res: Response) => {
+export const getUserNotifications = async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId } = req.params;
     const snapshot = await db.collection('users').doc(userId).collection('notifications').orderBy('timestamp', 'desc').get();

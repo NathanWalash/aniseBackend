@@ -8,7 +8,7 @@ const db = admin.firestore();
 const DaoFactoryAbi = DaoFactoryAbiJson.abi || DaoFactoryAbiJson;
 
 // POST /api/daos - Create DAO
-export const createDao = async (req: Request, res: Response) => {
+export const createDao = async (req: Request, res: Response): Promise<void> => {
   try {
     const { metadata, txHash, creatorUid } = req.body;
     console.log('[createDao] Received request', { metadata, txHash, creatorUid });
@@ -66,7 +66,7 @@ export const createDao = async (req: Request, res: Response) => {
 
 // GET /api/daos - List/search all DAOs
 // Returns a paginated list of all DAOs from the 'daos' collection, ordered by creation time.
-export const listDaos = async (req: Request, res: Response) => {
+export const listDaos = async (req: Request, res: Response): Promise<void> => {
   try {
     const { limit = 20, startAfter } = req.query;
     let query = db.collection('daos').orderBy('createdAt', 'desc').limit(Number(limit));
@@ -84,11 +84,14 @@ export const listDaos = async (req: Request, res: Response) => {
 
 // GET /api/daos/:daoAddress - Get DAO metadata/details
 // Returns metadata and config for a single DAO from 'daos/{daoAddress}'.
-export const getDao = async (req: Request, res: Response) => {
+export const getDao = async (req: Request, res: Response): Promise<void> => {
   try {
     const { daoAddress } = req.params;
     const doc = await db.collection('daos').doc(daoAddress).get();
-    if (!doc.exists) return res.status(404).json({ error: 'DAO not found' });
+    if (!doc.exists) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
     res.json({ id: doc.id, ...doc.data() });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -97,11 +100,14 @@ export const getDao = async (req: Request, res: Response) => {
 
 // GET /api/daos/:daoAddress/modules - List modules for this DAO
 // Returns the modules array (addresses, types, config) for a DAO from 'daos/{daoAddress}.modules'.
-export const getDaoModules = async (req: Request, res: Response) => {
+export const getDaoModules = async (req: Request, res: Response): Promise<void> => {
   try {
     const { daoAddress } = req.params;
     const doc = await db.collection('daos').doc(daoAddress).get();
-    if (!doc.exists) return res.status(404).json({ error: 'DAO not found' });
+    if (!doc.exists) {
+      res.status(404).json({ error: 'Not found' });
+      return;
+    }
     const data = doc.data();
     res.json({ modules: data?.modules || [] });
   } catch (err: any) {
