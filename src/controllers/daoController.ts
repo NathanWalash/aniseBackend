@@ -7,6 +7,7 @@ import ProposalVotingModuleAbiJson from '../abis/ProposalVotingModule.json';
 import ClaimVotingModuleAbiJson from '../abis/ClaimVotingModule.json';
 import MemberModuleAbiJson from '../abis/MemberModule.json';
 import { ethers } from 'ethers';
+import { FieldValue } from 'firebase-admin/firestore';
 
 const db = admin.firestore();
 const DaoFactoryAbi = DaoFactoryAbiJson.abi || DaoFactoryAbiJson;
@@ -58,8 +59,25 @@ export const createDao = async (req: Request, res: Response): Promise<void> => {
         uid: creatorUid,
       });
     }
-    console.log('[createDao] DAO and creator admin written to Firestore', { daoAddress });
-    res.status(200).json({ success: true, daoAddress });
+    // 5. Add creator as the first admin member in the DAO's subcollection
+    const creatorAddress = receipt.from;
+    if (creatorUid && creatorAddress) {
+      const memberRef = db.collection('daos').doc(daoAddress).collection('members').doc(creatorAddress);
+      await memberRef.set({
+        uid: creatorUid,
+        role: 'Admin',
+        joinedAt: FieldValue.serverTimestamp(),
+      });
+
+      // 6. Update the user's document to include the new DAO
+      const userRef = db.collection('users').doc(creatorUid);
+      await userRef.update({
+        daos: FieldValue.arrayUnion(daoAddress),
+      });
+    }
+
+    console.log(`[createDao] Successfully cached DAO ${daoAddress} and added creator ${creatorAddress} as admin.`);
+    res.status(201).json({ success: true, daoAddress });
   } catch (err: any) {
     console.error('[createDao] Error:', err);
     res.status(400).json({ error: err.message });
