@@ -5,6 +5,28 @@ import { ethers } from 'ethers';
 const db = admin.firestore();
 const AMOY_RPC_URL = 'https://polygon-amoy.infura.io/v3/e3899c2e9571490db9a718222ccf6649';
 
+// Add at the top of the file after imports
+interface DaoMetadata {
+  name?: string;
+  description?: string;
+  templateId?: string;
+  mandate?: string;
+  intendedAudience?: string;
+  isPublic?: boolean;
+}
+
+interface DaoData {
+  daoAddress: string;
+  metadata?: DaoMetadata;
+  creator?: string;
+  createdAt?: any;
+  blockNumber?: number;
+  txHash?: string;
+  modules?: Record<string, any>;
+  memberCount?: number;
+  role?: string;
+}
+
 // POST /api/users/wallet/connect
 export const connectWallet = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -58,11 +80,13 @@ export const connectWallet = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-// GET /api/users/:userId/daos - List DAOs a user is a member/admin of
-// Returns all DAOs where the user's wallet address is present in the members subcollection.
 export const getUserDaos = async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId } = req.params;
+    const page = parseInt(req.query.page as string || '1');
+    const limit = parseInt(req.query.limit as string || '10');
+    const searchQuery = (req.query.search as string || '').toLowerCase();
+
     // Get user's wallet address from Firestore
     const userDoc = await db.collection('users').doc(userId).get();
     if (!userDoc.exists) {
@@ -74,18 +98,56 @@ export const getUserDaos = async (req: Request, res: Response): Promise<void> =>
       res.status(400).json({ error: 'User has no linked wallet' });
       return;
     }
-    // Query all DAOs and filter for membership
-    const daosSnap = await db.collection('daos').get();
-    const daos = [];
-    for (const daoDoc of daosSnap.docs) {
-      const memberDoc = await db.collection('daos').doc(daoDoc.id).collection('members').doc(walletAddress).get();
+
+    console.log('Querying with wallet address:', walletAddress);
+
+    // First, get all DAOs
+    const daosSnapshot = await db.collection('daos').get();
+    const userDaos: DaoData[] = [];
+
+    // Then check each DAO's members collection for the user's wallet address
+    for (const daoDoc of daosSnapshot.docs) {
+      const memberDoc = await daoDoc.ref.collection('members').doc(walletAddress).get();
       if (memberDoc.exists) {
-        daos.push({ daoAddress: daoDoc.id, ...daoDoc.data(), role: memberDoc.data()?.role });
+        const daoData = daoDoc.data();
+        const memberData = memberDoc.data();
+        userDaos.push({
+          daoAddress: daoDoc.id,
+          ...daoData,
+          role: memberData?.role || 'Member',
+          memberCount: (await daoDoc.ref.collection('members').count().get()).data().count
+        } as DaoData);
       }
     }
-    res.json({ daos });
+
+    console.log('Found DAOs:', userDaos.length);
+
+    // Handle pagination
+    const startIndex = (page - 1) * limit;
+    const paginatedDaos = userDaos.slice(startIndex, startIndex + limit);
+
+    // If search is provided, filter results
+    const filteredDaos = searchQuery
+      ? paginatedDaos.filter(dao => 
+          dao.metadata?.name?.toLowerCase().includes(searchQuery) ||
+          dao.metadata?.description?.toLowerCase().includes(searchQuery)
+        )
+      : paginatedDaos;
+
+    console.log('Returning DAOs:', filteredDaos.length);
+
+    res.json({
+      daos: filteredDaos,
+      total: userDaos.length,
+      hasMore: startIndex + limit < userDaos.length
+    });
+
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error in getUserDaos:', err);
+    res.status(500).json({ 
+      error: err.message,
+      details: err.details
+    });
   }
 };
 
