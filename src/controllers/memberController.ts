@@ -10,7 +10,7 @@ export const listMembers = async (req: Request, res: Response): Promise<void> =>
     const { daoAddress } = req.params;
     const snapshot = await db.collection('daos').doc(daoAddress).collection('members').get();
     const members = snapshot.docs.map(doc => ({ walletAddress: doc.id, ...doc.data() }));
-    res.json({ members });
+    res.json({ members, memberCount: members.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -23,10 +23,16 @@ export const getMember = async (req: Request, res: Response): Promise<void> => {
     const { daoAddress, memberAddress } = req.params;
     const doc = await db.collection('daos').doc(daoAddress).collection('members').doc(memberAddress).get();
     if (!doc.exists) {
-      res.status(404).json({ error: 'Not found' });
+      // Check if they have a pending join request
+      const joinRequestDoc = await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(memberAddress).get();
+      if (joinRequestDoc.exists && joinRequestDoc.data()?.status === 'pending') {
+        res.json({ status: 'pending_request' });
+      } else {
+        res.json({ status: 'not_member' });
+      }
       return;
     }
-    res.json({ walletAddress: doc.id, ...doc.data() });
+    res.json({ status: 'member', walletAddress: doc.id, ...doc.data() });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -38,9 +44,55 @@ export const listJoinRequests = async (req: Request, res: Response): Promise<voi
   try {
     const { daoAddress } = req.params;
     const snapshot = await db.collection('daos').doc(daoAddress).collection('joinRequests').get();
-    const joinRequests = snapshot.docs.map(doc => ({ walletAddress: doc.id, ...doc.data() }));
+    
+    // Get join requests with user details
+    const joinRequestsPromises = snapshot.docs.map(async doc => {
+      const data = doc.data();
+      let userDetails = null;
+      
+      // If we have a uid, fetch user details
+      if (data.uid) {
+        const userDoc = await db.collection('users').doc(data.uid).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          userDetails = {
+            firstName: userData?.firstName,
+            lastName: userData?.lastName
+          };
+        }
+      }
+      
+      return {
+        memberAddress: doc.id,
+        ...data,
+        userDetails
+      };
+    });
+
+    const joinRequests = await Promise.all(joinRequestsPromises);
     res.json({ joinRequests });
   } catch (err: any) {
+    console.error('Error in listJoinRequests:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /api/daos/:daoAddress/join-requests/:memberAddress - Get single join request
+export const getJoinRequest = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { daoAddress, memberAddress } = req.params;
+    
+    const docRef = db.collection('daos').doc(daoAddress).collection('joinRequests').doc(memberAddress);
+    const docSnap = await docRef.get();
+    
+    if (!docSnap.exists) {
+      res.status(404).json({ error: 'Join request not found' });
+      return;
+    }
+    
+    res.json({ ...docSnap.data(), memberAddress: docSnap.id });
+  } catch (err: any) {
+    console.error('Error in getJoinRequest:', err);
     res.status(500).json({ error: err.message });
   }
 };
