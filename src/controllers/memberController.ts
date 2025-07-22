@@ -1,7 +1,11 @@
 import { Request, Response } from 'express';
 import admin from '../firebaseAdmin';
+import { verifyTransaction } from '../utils/verifyTransaction';
+import MemberModuleAbiJson from '../abis/MemberModule.json';
+import { ethers } from 'ethers';
 
 const db = admin.firestore();
+const MemberModuleAbi = MemberModuleAbiJson.abi || MemberModuleAbiJson;
 
 // GET /api/daos/:daoAddress/members - List all members
 // Returns all members (role, joinedAt, uid) from 'daos/{daoAddress}/members'.
@@ -39,11 +43,16 @@ export const getMember = async (req: Request, res: Response): Promise<void> => {
 };
 
 // GET /api/daos/:daoAddress/join-requests - List pending join requests
-// Returns all join requests (status, uid, timestamps) from 'daos/{daoAddress}/joinRequests'.
+// Returns pending join requests (status, uid, timestamps) from 'daos/{daoAddress}/joinRequests'.
 export const listJoinRequests = async (req: Request, res: Response): Promise<void> => {
   try {
     const { daoAddress } = req.params;
-    const snapshot = await db.collection('daos').doc(daoAddress).collection('joinRequests').get();
+    // Only get pending requests
+    const snapshot = await db.collection('daos')
+      .doc(daoAddress)
+      .collection('joinRequests')
+      .where('status', '==', 'pending')
+      .get();
     
     // Get join requests with user details
     const joinRequestsPromises = snapshot.docs.map(async doc => {
@@ -155,11 +164,83 @@ export const requestJoin = async (req: Request, res: Response): Promise<void> =>
 };
 
 // POST /api/daos/:daoAddress/join-requests/:requestId/approve - Approve join request (admin)
-// Frontend: Admin approves a join request. Backend updates joinRequest status to 'approved', sets handledAt, and adds member to members subcollection.
+// Frontend: Admin approves a join request. Backend verifies tx, updates joinRequest status to 'approved', and adds member.
 export const approveJoinRequest = async (req: Request, res: Response): Promise<void> => {
-  // TODO: Validate admin, update joinRequest status to 'approved', set handledAt
-  // TODO: Add member to 'members' subcollection with role 'member' and uid
-  res.status(501).json({ error: 'Not implemented' });
+  try {
+    const { daoAddress, requestId: memberAddress } = req.params;
+    const { txHash } = req.body;
+
+    if (!txHash) {
+      res.status(400).json({ error: 'Missing txHash' });
+      return;
+    }
+
+    // 1. Verify the admin is making this request
+    const adminAddress = (req as any).user?.wallet?.address;
+    if (!adminAddress) {
+      res.status(401).json({ error: 'Admin wallet not found' });
+      return;
+    }
+
+    const adminDoc = await db.collection('daos').doc(daoAddress).collection('members').doc(adminAddress).get();
+    if (!adminDoc.exists || adminDoc.data()?.role !== 'Admin') {
+      res.status(403).json({ error: 'Not an admin' });
+      return;
+    }
+
+    // 2. Get the join request to verify it exists and get the user's UID
+    const requestDoc = await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(memberAddress).get();
+    if (!requestDoc.exists || requestDoc.data()?.status !== 'pending') {
+      res.status(404).json({ error: 'Join request not found or not pending' });
+      return;
+    }
+
+    const requestData = requestDoc.data();
+    const uid = requestData?.uid;
+
+    // 3. Verify the transaction and check for MemberAdded event
+    console.log('Verifying transaction:', txHash);
+    const receipt = await verifyTransaction({
+      txHash,
+      expectedEventSig: 'MemberAdded(address,uint8)',
+      abi: MemberModuleAbi
+    });
+
+    // 4. Verify the event args match our expected member
+    if (receipt.member.toLowerCase() !== memberAddress.toLowerCase()) {
+      throw new Error('Transaction member address mismatch');
+    }
+
+    // 5. Update join request status
+    await requestDoc.ref.update({
+      status: 'approved',
+      handledAt: admin.firestore.FieldValue.serverTimestamp(),
+      handledBy: adminAddress,
+      handledTx: txHash
+    });
+
+    // 6. Add member to members collection
+    await db.collection('daos').doc(daoAddress).collection('members').doc(memberAddress).set({
+      role: 'Member',
+      joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+      uid: uid || null,
+      approvedBy: adminAddress,
+      approvalTx: txHash
+    });
+
+    // 7. If we have a UID, update the user's daos array
+    if (uid) {
+      await db.collection('users').doc(uid).update({
+        daos: admin.firestore.FieldValue.arrayUnion(daoAddress)
+      });
+    }
+
+    console.log('Successfully approved join request for:', memberAddress);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Error in approveJoinRequest:', err);
+    res.status(500).json({ error: err.message });
+  }
 };
 
 // POST /api/daos/:daoAddress/join-requests/:requestId/reject - Reject join request (admin)
