@@ -4,16 +4,28 @@ import admin from '../firebaseAdmin';
 const db = admin.firestore();
 
 // GET /api/daos/:daoAddress/treasury - Treasury info
-// Returns treasury info (token address, balance, last updated) from 'daos/{daoAddress}/treasury'.
+// Returns treasury info from the DAO's TreasuryModule config
 export const getTreasury = async (req: Request, res: Response): Promise<void> => {
   try {
     const { daoAddress } = req.params;
-    const doc = await db.collection('daos').doc(daoAddress).collection('treasury').doc('treasury').get();
-    if (!doc.exists) {
-      res.status(404).json({ error: 'Not found' });
+    const daoDoc = await db.collection('daos').doc(daoAddress).get();
+    if (!daoDoc.exists) {
+      res.status(404).json({ error: 'DAO not found' });
       return;
     }
-    res.json({ ...doc.data() });
+
+    const data = daoDoc.data();
+    const treasuryModule = data?.modules?.TreasuryModule;
+    
+    if (!treasuryModule) {
+      res.status(404).json({ error: 'Treasury module not found for this DAO' });
+      return;
+    }
+
+    res.json({
+      address: treasuryModule.address,
+      ...treasuryModule.config
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

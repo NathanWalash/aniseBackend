@@ -2,131 +2,155 @@
 
 A professional Node.js/Express + TypeScript backend for the Anise platform. Handles authentication (via Firebase), DAO management, user profiles, and GoCardless payment flows.
 
----
+## Firestore Data Structure
 
-## Features
-
-- **Authentication:** Signup, login, password reset, and profile management via Firebase Auth and Firestore.
-- **Protected Routes:** Uses Firebase Admin SDK to verify tokens for secure endpoints.
-- **DAO Management:** Create and manage DAOs with member management, proposals, claims, and treasury.
-- **Firestore Caching:** All blockchain state is cached in Firestore for fast queries.
-- **GoCardless Payment API:** Endpoints for mandate setup, payments, subscriptions, and webhooks.
-- **TypeScript:** Fully typed, strict config.
-- **Environment-based config:** Uses `.env` and a Firebase service account key.
-
----
-
-## Security & Authentication
-
-- **JWT-based Auth:**  
-  - When a user logs in or signs up, the backend issues a Firebase ID token (JWT) and a refresh token.
-  - The frontend stores these tokens securely (e.g., in AsyncStorage on mobile).
-- **Protected Endpoints:**  
-  - For any protected API (e.g., `/api/auth/me`), the frontend must send the ID token in the `Authorization: Bearer <token>` header.
-  - The backend uses the Firebase Admin SDK to verify the token's signature and validity on every request.
-  - If the token is missing, expired, or invalid, the backend returns a 401 Unauthorized error.
-- **Token Refresh:**  
-  - When the ID token expires, the frontend uses the refresh token (via Firebase REST API) to get a new ID token, without needing the user to log in again.
-
----
-
-## Project Structure
-
-```
-aniseBackend/
-├── config/
-│   └── serviceAccountKey.json         # Firebase Admin SDK service account
-├── src/
-│   ├── app.ts                         # Express app setup
-│   ├── server.ts                      # Server entry point
-│   ├── firebaseAdmin.ts               # Firebase Admin initialization
-│   ├── controllers/
-│   │   ├── authController.ts          # Auth logic
-│   │   ├── daoController.ts           # DAO management
-│   │   ├── memberController.ts        # Member management
-│   │   ├── proposalController.ts      # Proposal management
-│   │   ├── claimController.ts         # Claim management
-│   │   ├── treasuryController.ts      # Treasury management
-│   │   ├── paymentController.ts       # Payment logic (GoCardless)
-│   │   └── webhookController.ts       # GoCardless webhook handler
-│   ├── middlewares/
-│   │   └── verifyFirebaseToken.ts     # Auth middleware
-│   ├── routes/                        # API route definitions
-│   ├── utils/
-│   │   ├── gocardlessClient.ts        # GoCardless SDK client
-│   │   └── verifyTransaction.ts       # Blockchain tx verification
-│   └── abis/                          # Smart contract ABIs
-├── tests/
-└── .env (not committed)               # Environment variables
+### Users Collection (`/users/{userId}`)
+```typescript
+{
+  firstName: string,
+  lastName: string,
+  email: string,
+  dateOfBirth: string,
+  createdAt: number,
+  wallet: {
+    address: string,
+    linkedAt: timestamp
+  }
+}
 ```
 
----
+### DAOs Collection (`/daos/{daoAddress}`)
+```typescript
+{
+  daoAddress: string,
+  creator: string,
+  createdAt: timestamp,
+  blockNumber: number,
+  txHash: string,
+  metadata: {
+    name: string,
+    description: string,
+    templateId: string,
+    mandate: string,
+    intendedAudience: string,
+    isPublic: boolean
+  },
+  modules: {
+    ClaimVotingModule: {
+      config: { approvalThreshold: number }
+    },
+    ProposalVotingModule: {
+      config: { approvalThreshold: number }
+    },
+    MemberModule: {
+      config: {}
+    },
+    TreasuryModule: {
+      address: string,
+      config: {}
+    }
+  }
+}
+```
 
-## Setup & Installation
+### Members Subcollection (`/daos/{daoAddress}/members/{walletAddress}`)
+```typescript
+{
+  role: "Admin" | "Member",
+  joinedAt: timestamp,
+  uid: string
+}
+```
 
-1. **Clone the repo**
-   ```bash
-   git clone <YOUR_REPO_URL>
-   cd anise/aniseBackend
-   ```
+### Join Requests Subcollection (`/daos/{daoAddress}/joinRequests/{walletAddress}`)
+```typescript
+{
+  uid: string,
+  requestedAt: timestamp,
+  status: "pending"
+}
+```
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+### Proposals Subcollection (`/daos/{daoAddress}/proposals/{proposalId}`)
+```typescript
+{
+  proposalId: number,
+  proposer: string,
+  title: string,
+  description: string,
+  status: "pending" | "approved" | "rejected",
+  createdAt: timestamp,
+  votes: Record<string, boolean>,
+  voters: string[]
+}
+```
 
-3. **Add environment variables**  
-   Create a `.env` file in `aniseBackend/`:
-   ```
-   PORT=4001
-   FIREBASE_API_KEY=your_firebase_web_api_key
-   FIREBASE_PROJECT_ID=your_project_id
-   FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-   GOCARDLESS_ACCESS_TOKEN=your_gocardless_access_token
-   GOCARDLESS_ENVIRONMENT=sandbox
-   GOCARDLESS_SUCCESS_URL=https://your-ngrok-url.ngrok-free.app/success
-   API_BASE_URL=https://your-ngrok-url.ngrok-free.app/api
-   TOKEN_ADDRESS=your_token_contract_address
-   ```
+### Claims Subcollection (`/daos/{daoAddress}/claims/{claimId}`)
+```typescript
+{
+  claimId: number,
+  claimant: string,
+  title: string,
+  description: string,
+  amount: string,
+  status: "pending" | "approved" | "rejected" | "paid",
+  createdAt: timestamp,
+  votes: Record<string, boolean>,
+  voters: string[]
+}
+```
 
-4. **Add Firebase service account**  
-   - Download your service account JSON from Firebase Console.
-   - Place it at `aniseBackend/config/serviceAccountKey.json`.
+### User Notifications (`/users/{uid}/notifications/{notificationId}`)
+```typescript
+{
+  message: string,
+  type: string,
+  daoAddress: string,
+  isRead: boolean,
+  createdAt: timestamp
+}
+```
 
-5. **Run the server (dev mode)**
-   ```bash
-   npm run dev
-   ```
+## Implementation Status
 
----
+### Completed (✅)
+1. **Authentication & User Management**
+   - Firebase Auth integration
+   - User profile management
+   - Wallet linking
 
-## Firestore Setup & Indexing
+2. **DAO Management**
+   - DAO creation with on-chain verification
+   - DAO listing and details
+   - Member management structure
 
-### Required Indexes
+3. **GET Endpoints**
+   - User profile and wallet info
+   - DAO listings and details
+   - Member listings
+   - Basic proposal/claim viewing
 
-The backend uses collection group queries which require specific indexes. When you first run certain queries, you'll get errors with links to create the required indexes. The main required index is:
+### In Progress (⚠️)
+1. **Member Management**
+   - Join request handling
+   - Role management
+   - Member removal
 
-1. **Members Collection Group Index:**
-   - Collection ID: `members`
-   - Fields to index:
-     - `walletAddress` (Ascending)
-   - Query scope: Collection group
+2. **Voting System**
+   - Proposal creation and voting
+   - Claim submission and voting
+   - Vote verification and counting
 
-To create indexes:
+### Not Started (🚧)
+1. **Treasury Management**
+   - Deposit tracking
+   - Withdrawal verification
+   - Balance updates
 
-1. **Automatic Method (Recommended):**
-   - Run the backend and try to access an endpoint that needs the index
-   - Look for an error message containing a direct link to create the index
-   - Click the link and create the index in Firebase Console
-
-2. **Manual Method:**
-   - Go to Firebase Console > Firestore > Indexes
-   - Click "Add Collection Group Index"
-   - Fill in the fields as specified above
-
-Note: Indexes take a few minutes to build. The backend includes commented code to help generate index creation links if needed.
-
----
+2. **Notifications**
+   - Event tracking
+   - Notification creation
+   - Read/unread status
 
 ## API Endpoints
 
@@ -176,22 +200,25 @@ Note: Indexes take a few minutes to build. The backend includes commented code t
 - `POST   /create-payment`         — Create one-off payment
 - `POST   /webhook`                — GoCardless webhook endpoint
 
----
+## Important Implementation Notes
 
-## Implementation Status
+1. **Member Document IDs**
+   - Member documents use wallet addresses as their document IDs
+   - Example: `/daos/{daoAddress}/members/0x58EeBe87F92798d1F3D82ae1ab642aC79dD096BE`
 
-1. ✅ Smart Contracts - Complete & Robust
-2. ✅ DAO Creation Flow - Complete & Working
-3. ✅ Firestore Data Model - Finalized
-4. ✅ GET Endpoints - All implemented
-5. ⚠️ POST/PUT Endpoints - Partially Complete
-   - ✅ Authentication/User Management
-   - ✅ DAO Creation
-   - ⚠️ Member Management (in progress)
-   - ⚠️ Voting/Claims (in progress)
-   - 🚧 Treasury Management (not started)
-6. 🚧 Payment Integration - In Progress
-7. ⏳ Notifications - Not Started
+2. **Wallet Addresses**
+   - Stored in user documents under `wallet.address`
+   - Used as document IDs in members collections
+   - Case-sensitive, stored as-is from blockchain
+
+3. **Timestamps**
+   - All timestamps are Firestore timestamps
+   - `createdAt` fields use server timestamps
+   - `joinedAt` and other time fields are also timestamps
+
+4. **Role Management**
+   - Roles are stored as strings: "Admin" or "Member"
+   - Default role is "Member" if not specified
 
 ---
 

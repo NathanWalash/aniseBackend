@@ -48,9 +48,58 @@ export const listJoinRequests = async (req: Request, res: Response): Promise<voi
 // POST /api/daos/:daoAddress/join-requests - Request to join DAO
 // Frontend: User submits a join request after connecting wallet. Backend creates a joinRequest doc with status 'pending'.
 export const requestJoin = async (req: Request, res: Response): Promise<void> => {
-  // TODO: Validate user, check if already a member or pending
-  // TODO: Add join request to 'daos/{daoAddress}/joinRequests/{walletAddress}' with status 'pending', uid, requestedAt
-  res.status(501).json({ error: 'Not implemented' });
+  try {
+    const { daoAddress } = req.params;
+    const { txHash, memberAddress } = req.body;
+
+    console.log('Received join request:', { daoAddress, txHash, memberAddress });
+
+    if (!txHash || !memberAddress) {
+      res.status(400).json({ error: 'Missing txHash or memberAddress' });
+      return;
+    }
+
+    // Get user's UID from auth context
+    const uid = (req as any).user?.uid;
+    console.log('User UID:', uid);
+
+    // Check if already a member
+    const memberDoc = await db.collection('daos').doc(daoAddress).collection('members').doc(memberAddress).get();
+    if (memberDoc.exists) {
+      console.log('User is already a member');
+      res.status(400).json({ error: 'Already a member' });
+      return;
+    }
+
+    // Check if already has a pending request
+    const requestDoc = await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(memberAddress).get();
+    if (requestDoc.exists) {
+      const data = requestDoc.data();
+      if (data?.status === 'pending') {
+        console.log('User already has a pending request');
+        res.status(400).json({ error: 'Already requested to join' });
+        return;
+      }
+    }
+
+    // Store join request
+    const requestData = {
+      status: 'pending',
+      uid: uid || null, // Make uid optional
+      txHash,
+      requestedAt: admin.firestore.FieldValue.serverTimestamp(),
+      memberAddress // Store this to make queries easier
+    };
+    console.log('Storing join request:', requestData);
+
+    await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(memberAddress).set(requestData);
+    console.log('Join request stored successfully');
+
+    res.json({ status: 'success', data: requestData });
+  } catch (err: any) {
+    console.error('Error in requestJoin:', err);
+    res.status(500).json({ error: err.message });
+  }
 };
 
 // POST /api/daos/:daoAddress/join-requests/:requestId/approve - Approve join request (admin)

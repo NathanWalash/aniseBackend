@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { verifyFirebaseToken } from './middlewares/verifyFirebaseToken';
 import authRoutes from './routes/authRoutes';
 import paymentRoutes from './routes/paymentRoutes';
 import webhookRoutes from './routes/webhookRoutes';
@@ -15,16 +16,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Mount routers
-app.use('/api/payment', webhookRoutes);
+// Public routes (no auth required)
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/daos', daoRoutes);
-app.use('/api/daos', proposalRoutes);
-app.use('/api/daos', claimRoutes);
-app.use('/api/daos', memberRoutes);
-app.use('/api/daos', treasuryRoutes);
-app.use('/api', paymentRoutes);
-// TODO: Add more routers as needed
+app.use('/api/payment', webhookRoutes);
+
+// Protected routes (require auth)
+app.use('/api/users', verifyFirebaseToken, userRoutes);
+app.use('/api/daos', verifyFirebaseToken, daoRoutes);
+app.use('/api/daos', verifyFirebaseToken, proposalRoutes);
+app.use('/api/daos', verifyFirebaseToken, claimRoutes);
+app.use('/api/daos', verifyFirebaseToken, memberRoutes);
+app.use('/api/daos', verifyFirebaseToken, treasuryRoutes);
+app.use('/api', verifyFirebaseToken, paymentRoutes);
 
 export default app; 
