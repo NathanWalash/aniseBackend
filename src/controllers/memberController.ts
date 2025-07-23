@@ -244,10 +244,64 @@ export const approveJoinRequest = async (req: Request, res: Response): Promise<v
 };
 
 // POST /api/daos/:daoAddress/join-requests/:requestId/reject - Reject join request (admin)
-// Frontend: Admin rejects a join request. Backend updates joinRequest status to 'rejected', sets handledAt.
+// Frontend: Admin rejects a join request. Backend verifies tx, updates joinRequest status to 'rejected'.
 export const rejectJoinRequest = async (req: Request, res: Response): Promise<void> => {
-  // TODO: Validate admin, update joinRequest status to 'rejected', set handledAt
-  res.status(501).json({ error: 'Not implemented' });
+  try {
+    const { daoAddress, requestId: memberAddress } = req.params;
+    const { txHash } = req.body;
+
+    if (!txHash) {
+      res.status(400).json({ error: 'Missing txHash' });
+      return;
+    }
+
+    // 1. Verify the admin is making this request
+    const adminAddress = (req as any).user?.wallet?.address;
+    if (!adminAddress) {
+      res.status(401).json({ error: 'Admin wallet not found' });
+      return;
+    }
+
+    const adminDoc = await db.collection('daos').doc(daoAddress).collection('members').doc(adminAddress).get();
+    if (!adminDoc.exists || adminDoc.data()?.role !== 'Admin') {
+      res.status(403).json({ error: 'Not an admin' });
+      return;
+    }
+
+    // 2. Get the join request to verify it exists and get the user's UID
+    const requestDoc = await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(memberAddress).get();
+    if (!requestDoc.exists || requestDoc.data()?.status !== 'pending') {
+      res.status(404).json({ error: 'Join request not found or not pending' });
+      return;
+    }
+
+    // 3. Verify the transaction and check for JoinRequestHandled event
+    console.log('Verifying transaction:', txHash);
+    const receipt = await verifyTransaction({
+      txHash,
+      expectedEventSig: 'JoinRequestHandled(address,bool)',
+      abi: MemberModuleAbi
+    });
+
+    // 4. Verify the event args match our expected member and rejection status
+    if (receipt.requester.toLowerCase() !== memberAddress.toLowerCase() || receipt.accepted !== false) {
+      throw new Error('Transaction member address mismatch or wrong acceptance status');
+    }
+
+    // 5. Update join request status
+    await requestDoc.ref.update({
+      status: 'rejected',
+      handledAt: admin.firestore.FieldValue.serverTimestamp(),
+      handledBy: adminAddress,
+      handledTx: txHash
+    });
+
+    console.log('Successfully rejected join request for:', memberAddress);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Error in rejectJoinRequest:', err);
+    res.status(500).json({ error: err.message });
+  }
 };
 
 // POST /api/daos/:daoAddress/members/:memberAddress/role - Change member role (admin only)
