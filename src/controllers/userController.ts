@@ -87,63 +87,107 @@ export const getUserDaos = async (req: Request, res: Response): Promise<void> =>
     const limit = parseInt(req.query.limit as string || '10');
     const searchQuery = (req.query.search as string || '').toLowerCase();
 
-    // Get user's wallet address from Firestore
+    console.log('[getUserDaos] Starting request for userId:', userId);
+
+    // Get user's data from Firestore
     const userDoc = await db.collection('users').doc(userId).get();
     if (!userDoc.exists) {
+      console.log('[getUserDaos] User not found:', userId);
       res.status(404).json({ error: 'User not found' });
       return;
     }
-    const walletAddress = userDoc.data()?.wallet?.address;
+
+    const userData = userDoc.data();
+    const walletAddress = userData?.wallet?.address;
+    const userDaoAddresses = userData?.daos || [];
+
     if (!walletAddress) {
+      console.log('[getUserDaos] No wallet address for user:', userId);
       res.status(400).json({ error: 'User has no linked wallet' });
       return;
     }
 
-    console.log('Querying with wallet address:', walletAddress);
+    // Convert wallet address to checksum format for comparison
+    const checksumWalletAddress = ethers.getAddress(walletAddress);
+    console.log('[getUserDaos] Using checksum wallet address:', checksumWalletAddress);
+    console.log('[getUserDaos] User DAOs:', userDaoAddresses);
 
-    // First, get all DAOs
-    const daosSnapshot = await db.collection('daos').get();
     const userDaos: DaoData[] = [];
 
-    // Then check each DAO's members collection for the user's wallet address
-    for (const daoDoc of daosSnapshot.docs) {
-      const memberDoc = await daoDoc.ref.collection('members').doc(walletAddress).get();
-      if (memberDoc.exists) {
-        const daoData = daoDoc.data();
-        const memberData = memberDoc.data();
-        userDaos.push({
-          daoAddress: daoDoc.id,
-          ...daoData,
-          role: memberData?.role || 'Member',
-          memberCount: (await daoDoc.ref.collection('members').count().get()).data().count
-        } as DaoData);
+    // Fetch each DAO the user is a member of
+    for (const daoAddress of userDaoAddresses) {
+      const daoDoc = await db.collection('daos').doc(daoAddress).get();
+      
+      if (daoDoc.exists) {
+        const daoData = daoDoc.data() || {};
+        // Use checksum address for member lookup
+        const memberDoc = await daoDoc.ref.collection('members').doc(checksumWalletAddress).get();
+
+        if (memberDoc.exists) {
+          const memberData = memberDoc.data();
+          console.log('[getUserDaos] Found membership in DAO:', {
+            daoAddress,
+            role: memberData?.role,
+            memberData
+          });
+
+          // Only add if it matches search query (if any)
+          const matchesSearch = !searchQuery || 
+            String(daoData?.metadata?.name || '').toLowerCase().includes(searchQuery) ||
+            String(daoData?.metadata?.description || '').toLowerCase().includes(searchQuery);
+
+          if (matchesSearch) {
+            const memberCount = await daoDoc.ref.collection('members').count().get();
+            
+            userDaos.push({
+              daoAddress: daoDoc.id,
+              metadata: daoData.metadata || {},
+              creator: daoData.creator,
+              createdAt: daoData.createdAt,
+              modules: daoData.modules || {},
+              role: memberData?.role || 'Member',
+              memberCount: memberCount.data().count
+            });
+          }
+        } else {
+          console.warn('[getUserDaos] User is in daos array but not in members collection:', {
+            daoAddress,
+            walletAddress: checksumWalletAddress
+          });
+        }
+      } else {
+        console.warn('[getUserDaos] DAO not found:', daoAddress);
       }
     }
 
-    console.log('Found DAOs:', userDaos.length);
+    console.log('[getUserDaos] Found user DAOs:', userDaos.length);
+
+    // Sort by creation date (newest first)
+    userDaos.sort((a, b) => {
+      const dateA = a.createdAt?._seconds || 0;
+      const dateB = b.createdAt?._seconds || 0;
+      return dateB - dateA;
+    });
 
     // Handle pagination
     const startIndex = (page - 1) * limit;
     const paginatedDaos = userDaos.slice(startIndex, startIndex + limit);
 
-    // If search is provided, filter results
-    const filteredDaos = searchQuery
-      ? paginatedDaos.filter(dao => 
-          dao.metadata?.name?.toLowerCase().includes(searchQuery) ||
-          dao.metadata?.description?.toLowerCase().includes(searchQuery)
-        )
-      : paginatedDaos;
-
-    console.log('Returning DAOs:', filteredDaos.length);
+    console.log('[getUserDaos] Returning paginated DAOs:', {
+      total: userDaos.length,
+      page,
+      limit,
+      returned: paginatedDaos.length
+    });
 
     res.json({
-      daos: filteredDaos,
+      daos: paginatedDaos,
       total: userDaos.length,
       hasMore: startIndex + limit < userDaos.length
     });
 
   } catch (err: any) {
-    console.error('Error in getUserDaos:', err);
+    console.error('[getUserDaos] Error:', err);
     res.status(500).json({ 
       error: err.message,
       details: err.details

@@ -51,25 +51,18 @@ export const createDao = async (req: Request, res: Response): Promise<void> => {
       modules, // <-- directly from frontend, keyed by module type
     };
     await db.collection('daos').doc(daoAddress).set(daoDoc);
-    // 4. Initialize members subcollection with creator as admin
-    if (creatorUid && receipt.from) {
-      await db.collection('daos').doc(daoAddress).collection('members').doc(receipt.from).set({
-        role: 'admin',
-        joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-        uid: creatorUid,
-      });
-    }
-    // 5. Add creator as the first admin member in the DAO's subcollection
+
+    // 4. Add creator as admin member (only need to do this once)
     const creatorAddress = receipt.from;
     if (creatorUid && creatorAddress) {
       const memberRef = db.collection('daos').doc(daoAddress).collection('members').doc(creatorAddress);
       await memberRef.set({
         uid: creatorUid,
-        role: 'Admin',
-        joinedAt: FieldValue.serverTimestamp(),
+        role: 'Admin', // Consistent casing
+        joinedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      // 6. Update the user's document to include the new DAO
+      // 5. Update the user's document to include the new DAO
       const userRef = db.collection('users').doc(creatorUid);
       await userRef.update({
         daos: FieldValue.arrayUnion(daoAddress),

@@ -182,14 +182,42 @@ export const approveJoinRequest = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    const adminDoc = await db.collection('daos').doc(daoAddress).collection('members').doc(adminAddress).get();
+    // Convert addresses to checksum format
+    const checksumAdminAddress = ethers.getAddress(adminAddress);
+    const checksumMemberAddress = ethers.getAddress(memberAddress);
+    // Also keep lowercase version for Firestore lookups
+    const lowercaseMemberAddress = memberAddress.toLowerCase();
+
+    console.log('[approveJoinRequest] Using addresses:', {
+      admin: checksumAdminAddress,
+      member: checksumMemberAddress,
+      memberLower: lowercaseMemberAddress
+    });
+
+    const adminDoc = await db.collection('daos').doc(daoAddress).collection('members').doc(checksumAdminAddress).get();
     if (!adminDoc.exists || adminDoc.data()?.role !== 'Admin') {
+      console.log('[approveJoinRequest] Not an admin:', {
+        exists: adminDoc.exists,
+        role: adminDoc.data()?.role
+      });
       res.status(403).json({ error: 'Not an admin' });
       return;
     }
 
     // 2. Get the join request to verify it exists and get the user's UID
-    const requestDoc = await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(memberAddress).get();
+    // Try both lowercase and checksum versions
+    let requestDoc = await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(lowercaseMemberAddress).get();
+    if (!requestDoc.exists) {
+      // Try checksum version as fallback
+      requestDoc = await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(checksumMemberAddress).get();
+    }
+
+    console.log('[approveJoinRequest] Join request lookup:', {
+      exists: requestDoc.exists,
+      status: requestDoc.data()?.status,
+      address: requestDoc.id
+    });
+
     if (!requestDoc.exists || requestDoc.data()?.status !== 'pending') {
       res.status(404).json({ error: 'Join request not found or not pending' });
       return;
@@ -207,7 +235,7 @@ export const approveJoinRequest = async (req: Request, res: Response): Promise<v
     });
 
     // 4. Verify the event args match our expected member
-    if (receipt.member.toLowerCase() !== memberAddress.toLowerCase()) {
+    if (ethers.getAddress(receipt.member) !== checksumMemberAddress) {
       throw new Error('Transaction member address mismatch');
     }
 
@@ -215,16 +243,16 @@ export const approveJoinRequest = async (req: Request, res: Response): Promise<v
     await requestDoc.ref.update({
       status: 'approved',
       handledAt: admin.firestore.FieldValue.serverTimestamp(),
-      handledBy: adminAddress,
+      handledBy: checksumAdminAddress,
       handledTx: txHash
     });
 
     // 6. Add member to members collection
-    await db.collection('daos').doc(daoAddress).collection('members').doc(memberAddress).set({
+    await db.collection('daos').doc(daoAddress).collection('members').doc(checksumMemberAddress).set({
       role: 'Member',
       joinedAt: admin.firestore.FieldValue.serverTimestamp(),
       uid: uid || null,
-      approvedBy: adminAddress,
+      approvedBy: checksumAdminAddress,
       approvalTx: txHash
     });
 
@@ -235,7 +263,7 @@ export const approveJoinRequest = async (req: Request, res: Response): Promise<v
       });
     }
 
-    console.log('Successfully approved join request for:', memberAddress);
+    console.log('Successfully approved join request for:', checksumMemberAddress);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Error in approveJoinRequest:', err);
@@ -262,14 +290,42 @@ export const rejectJoinRequest = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const adminDoc = await db.collection('daos').doc(daoAddress).collection('members').doc(adminAddress).get();
+    // Convert addresses to checksum format
+    const checksumAdminAddress = ethers.getAddress(adminAddress);
+    const checksumMemberAddress = ethers.getAddress(memberAddress);
+    // Also keep lowercase version for Firestore lookups
+    const lowercaseMemberAddress = memberAddress.toLowerCase();
+
+    console.log('[rejectJoinRequest] Using addresses:', {
+      admin: checksumAdminAddress,
+      member: checksumMemberAddress,
+      memberLower: lowercaseMemberAddress
+    });
+
+    const adminDoc = await db.collection('daos').doc(daoAddress).collection('members').doc(checksumAdminAddress).get();
     if (!adminDoc.exists || adminDoc.data()?.role !== 'Admin') {
+      console.log('[rejectJoinRequest] Not an admin:', {
+        exists: adminDoc.exists,
+        role: adminDoc.data()?.role
+      });
       res.status(403).json({ error: 'Not an admin' });
       return;
     }
 
     // 2. Get the join request to verify it exists and get the user's UID
-    const requestDoc = await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(memberAddress).get();
+    // Try both lowercase and checksum versions
+    let requestDoc = await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(lowercaseMemberAddress).get();
+    if (!requestDoc.exists) {
+      // Try checksum version as fallback
+      requestDoc = await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(checksumMemberAddress).get();
+    }
+
+    console.log('[rejectJoinRequest] Join request lookup:', {
+      exists: requestDoc.exists,
+      status: requestDoc.data()?.status,
+      address: requestDoc.id
+    });
+
     if (!requestDoc.exists || requestDoc.data()?.status !== 'pending') {
       res.status(404).json({ error: 'Join request not found or not pending' });
       return;
@@ -284,7 +340,7 @@ export const rejectJoinRequest = async (req: Request, res: Response): Promise<vo
     });
 
     // 4. Verify the event args match our expected member and rejection status
-    if (receipt.requester.toLowerCase() !== memberAddress.toLowerCase() || receipt.accepted !== false) {
+    if (ethers.getAddress(receipt.requester) !== checksumMemberAddress || receipt.accepted !== false) {
       throw new Error('Transaction member address mismatch or wrong acceptance status');
     }
 
@@ -292,11 +348,11 @@ export const rejectJoinRequest = async (req: Request, res: Response): Promise<vo
     await requestDoc.ref.update({
       status: 'rejected',
       handledAt: admin.firestore.FieldValue.serverTimestamp(),
-      handledBy: adminAddress,
+      handledBy: checksumAdminAddress,
       handledTx: txHash
     });
 
-    console.log('Successfully rejected join request for:', memberAddress);
+    console.log('Successfully rejected join request for:', checksumMemberAddress);
     res.json({ success: true });
   } catch (err: any) {
     console.error('Error in rejectJoinRequest:', err);
