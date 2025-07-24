@@ -19,20 +19,28 @@ interface ContractEvent {
 }
 
 // GET /api/daos/:daoAddress/proposals - List all proposals
-// Returns all proposals (status, threshold, votes, etc.) from 'daos/{daoAddress}/proposals'.
 export const listProposals = async (req: Request, res: Response): Promise<void> => {
   try {
     const { daoAddress } = req.params;
-    const { limit = 20, startAfter } = req.query;
-    let query = db.collection('daos').doc(daoAddress).collection('proposals').orderBy('createdAt', 'desc').limit(Number(limit));
-    if (startAfter) {
-      const startDoc = await db.collection('daos').doc(daoAddress).collection('proposals').doc(String(startAfter)).get();
-      if (startDoc.exists) query = query.startAfter(startDoc);
-    }
-    const snapshot = await query.get();
-    const proposals = snapshot.docs.map(doc => ({ proposalId: doc.id, ...doc.data() }));
+    
+    // Use Firestore subcollection pattern
+    const snapshot = await db.collection('daos')
+      .doc(daoAddress)
+      .collection('proposals')
+      .orderBy('createdAt', 'desc')
+      .get();
+    
+    // Map with ID included
+    const proposals = snapshot.docs.map(doc => ({
+      proposalId: doc.id,
+      ...doc.data()
+    }));
+
+    // Always wrap in named field
     res.json({ proposals });
   } catch (err: any) {
+    console.error('Error in listProposals:', err);
+    // Always use json() for errors
     res.status(500).json({ error: err.message });
   }
 };

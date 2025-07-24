@@ -13,6 +13,33 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
+// GET /api/daos/:daoAddress/claims - List all claims
+export const listClaims = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { daoAddress } = req.params;
+    
+    // Use Firestore subcollection pattern
+    const snapshot = await db.collection('daos')
+      .doc(daoAddress)
+      .collection('claims')
+      .orderBy('createdAt', 'desc')
+      .get();
+    
+    // Map with ID included
+    const claims = snapshot.docs.map(doc => ({
+      claimId: doc.id,
+      ...doc.data()
+    }));
+
+    // Always wrap in named field
+    res.json({ claims });
+  } catch (err: any) {
+    console.error('Error in listClaims:', err);
+    // Always use json() for errors
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export const createClaim = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { daoAddress } = req.params;
