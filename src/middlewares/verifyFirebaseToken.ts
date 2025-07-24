@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import admin from '../firebaseAdmin';
 
+const db = admin.firestore();
+
 export const verifyFirebaseToken = async (req: Request, res: Response, next: NextFunction) => {
   console.log("verifyFirebaseToken called");
   try {
@@ -11,8 +13,22 @@ export const verifyFirebaseToken = async (req: Request, res: Response, next: Nex
     }
     const idToken = authHeader.split(' ')[1];
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    // Attach user info to request
-    (req as any).user = decodedToken;
+
+    // Get user data from Firestore
+    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+    const userData = userDoc.exists ? userDoc.data() : null;
+
+    // Attach both auth and Firestore data to request
+    (req as any).user = {
+      ...decodedToken,
+      walletAddress: userData?.wallet?.address || null,
+      firstName: userData?.firstName,
+      lastName: userData?.lastName,
+      email: userData?.email,
+      // Add the full wallet object for completeness
+      wallet: userData?.wallet || null
+    };
+
     return next();
   } catch (err) {
     console.error('Token verification failed:', err);

@@ -123,4 +123,34 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+};
+
+// Get user by ID
+export const getUserById = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { uid } = req.params;
+    if (!uid) {
+      res.status(400).json({ error: 'User ID required' });
+      return;
+    }
+
+    const docRef = db.collection('users').doc(uid);
+    const docSnap = await docRef.get();
+    
+    if (!docSnap.exists) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    // Return only necessary fields
+    const userData = docSnap.data();
+    res.json({
+      firstName: userData?.firstName,
+      lastName: userData?.lastName,
+      uid: uid
+    });
+  } catch (err: any) {
+    console.error('Error getting user by ID:', err);
+    res.status(500).json({ error: err.message });
+  }
 }; 
