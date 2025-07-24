@@ -10,6 +10,9 @@ const AMOY_RPC_URL = 'https://polygon-amoy.infura.io/v3/e3899c2e9571490db9a71822
 interface AuthenticatedRequest extends Request {
   user?: {
     uid: string;
+    wallet?: {
+      address: string;
+    };
   };
 }
 
@@ -165,9 +168,133 @@ export const createProposal = async (req: AuthenticatedRequest, res: Response): 
 
 // POST /api/daos/:daoAddress/proposals/:proposalId/vote - Vote on proposal
 // Frontend: User votes on a proposal after sending blockchain tx. Backend verifies tx, updates votes object, approvals/rejections, and checks threshold to update status.
-export const voteOnProposal = async (req: Request, res: Response): Promise<void> => {
-  // TODO: Verify tx, extract voter, vote type (approve/reject)
-  // TODO: Update votes object in proposal doc, increment approvals/rejections
-  // TODO: If approvals or rejections meet threshold, update status to 'approved' or 'rejected'
-  res.status(501).json({ error: 'Not implemented' });
+export const voteOnProposal = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { daoAddress, proposalId } = req.params;
+    const { txHash, voteType } = req.body; // voteType will be 'approve' or 'reject'
+    const userId = req.user?.uid;
+    const userWallet = req.user?.wallet?.address;
+
+    if (!userId || !txHash || !voteType) {
+      res.status(401).json({ error: 'Not authenticated or missing txHash/voteType' });
+      return;
+    }
+
+    if (!userWallet) {
+      res.status(400).json({ error: 'No wallet linked to user' });
+      return;
+    }
+
+    // Get proposal doc to verify it exists and is pending
+    const proposalDoc = await db.collection('daos')
+      .doc(daoAddress)
+      .collection('proposals')
+      .doc(proposalId)
+      .get();
+
+    if (!proposalDoc.exists) {
+      res.status(404).json({ error: 'Proposal not found' });
+      return;
+    }
+
+    const proposalData = proposalDoc.data();
+    if (proposalData?.status !== 'pending') {
+      res.status(400).json({ error: 'Proposal is not pending' });
+      return;
+    }
+
+    // Check if user is the proposer
+    if (ethers.getAddress(proposalData.proposer) === ethers.getAddress(userWallet)) {
+      res.status(400).json({ error: 'Proposer cannot vote on their own proposal' });
+      return;
+    }
+
+    // Check if user has already voted
+    if (proposalData.voters?.[userWallet]) {
+      res.status(400).json({ error: 'Already voted on this proposal' });
+      return;
+    }
+
+    // 1. Get the transaction receipt
+    const provider = new ethers.JsonRpcProvider(AMOY_RPC_URL);
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) {
+      throw new Error('Transaction not found');
+    }
+    if (receipt.status !== 1) {
+      throw new Error('Transaction failed');
+    }
+
+    // 2. Get the VoteCast event args
+    const voteEventArgs = await verifyTransaction({
+      txHash,
+      expectedEventSig: 'VoteCast(uint256,address,bool)',
+      abi: ProposalVotingModuleAbi.abi
+    });
+
+    // 3. Extract vote data
+    const eventProposalId = voteEventArgs[0].toString();
+    const voter = voteEventArgs[1];
+    const approve = voteEventArgs[2];
+
+    // 4. Verify data matches
+    if (eventProposalId !== proposalId) {
+      throw new Error('Proposal ID mismatch');
+    }
+    if (ethers.getAddress(voter) !== ethers.getAddress(userWallet)) {
+      throw new Error('Voter address mismatch');
+    }
+    if ((voteType === 'approve' && !approve) || (voteType === 'reject' && approve)) {
+      throw new Error('Vote type mismatch');
+    }
+
+    // 5. Check for ProposalFinalized event in the same transaction
+    const iface = new ethers.Interface(ProposalVotingModuleAbi.abi);
+    let isFinalized = false;
+    let finalizedStatus = null;
+
+    for (const log of receipt.logs) {
+      try {
+        const parsed = iface.parseLog(log);
+        if (parsed && parsed.name === 'ProposalFinalized') {
+          const [, status] = parsed.args;
+          isFinalized = true;
+          // Status enum in contract: { Pending = 0, Approved = 1, Rejected = 2 }
+          finalizedStatus = status === 1 ? 'approved' : 'rejected';
+          break;
+        }
+      } catch (e) { /* not this event */ }
+    }
+
+    // 6. Update Firestore
+    const updateData: any = {
+      [`votes.${userWallet}`]: {
+        vote: approve,
+        votedAt: admin.firestore.FieldValue.serverTimestamp(),
+        txHash
+      },
+      [`voters.${userWallet}`]: true
+    };
+
+    if (isFinalized) {
+      updateData.status = finalizedStatus;
+      updateData.finalizedAt = admin.firestore.FieldValue.serverTimestamp();
+      updateData.finalizedTxHash = txHash;
+    }
+
+    await proposalDoc.ref.update(updateData);
+
+    res.json({ 
+      success: true,
+      isFinalized,
+      status: isFinalized ? finalizedStatus : 'pending'
+    });
+
+  } catch (err: any) {
+    console.error('Error voting on proposal:', err);
+    res.status(500).json({ 
+      error: err.message,
+      details: err.details || err.stack
+    });
+  }
 }; 
