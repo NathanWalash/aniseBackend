@@ -1,7 +1,22 @@
 import { Request, Response } from 'express';
-import admin from '../firebaseAdmin';
+import admin from 'firebase-admin';
+import { verifyTransaction } from '../utils/verifyTransaction';
+import { ethers } from 'ethers';
+import ProposalVotingModuleAbi from '../abis/ProposalVotingModule.json';
 
 const db = admin.firestore();
+const AMOY_RPC_URL = 'https://polygon-amoy.infura.io/v3/e3899c2e9571490db9a718222ccf6649';
+
+interface AuthenticatedRequest extends Request {
+  user?: {
+    uid: string;
+  };
+}
+
+interface ContractEvent {
+  event: string;
+  args: any[];
+}
 
 // GET /api/daos/:daoAddress/proposals - List all proposals
 // Returns all proposals (status, threshold, votes, etc.) from 'daos/{daoAddress}/proposals'.
@@ -55,12 +70,89 @@ export const getProposalVotes = async (req: Request, res: Response): Promise<voi
   }
 };
 
-// POST /api/daos/:daoAddress/proposals - Create proposal
-// Frontend: User submits a proposal after sending blockchain tx. Backend verifies tx, extracts proposal data, caches threshold, initializes votes object in Firestore.
-export const createProposal = async (req: Request, res: Response): Promise<void> => {
-  // TODO: Verify tx, extract proposalId, proposer, title, description, threshold from contract/module config
-  // TODO: Write proposal doc to 'daos/{daoAddress}/proposals/{proposalId}' with status 'pending', threshold, votes: {}, approvals: 0, rejections: 0
-  res.status(501).json({ error: 'Not implemented' });
+export const createProposal = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { daoAddress } = req.params;
+    const { title, description, txHash } = req.body;
+    const userId = req.user?.uid;
+
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // 1. Get the transaction receipt for sender verification
+    const provider = new ethers.JsonRpcProvider(AMOY_RPC_URL);
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) {
+      throw new Error('Transaction not found');
+    }
+    if (receipt.status !== 1) {
+      throw new Error('Transaction failed');
+    }
+
+    // 2. Get the event args
+    const eventArgs = await verifyTransaction({
+      txHash,
+      expectedEventSig: 'ProposalCreated(uint256,address,string,string)',
+      abi: ProposalVotingModuleAbi.abi
+    });
+
+    // 3. Extract data from event args (returned in order of parameters)
+    const proposalId = eventArgs[0].toString();  // uint256 proposalId
+    const proposer = eventArgs[1];               // address proposer
+    const eventTitle = eventArgs[2];             // string title
+    const eventDescription = eventArgs[3];       // string description
+
+    // 4. Verify the transaction sender matches the proposer
+    if (ethers.getAddress(proposer) !== ethers.getAddress(receipt.from)) {
+      throw new Error('Transaction sender mismatch');
+    }
+
+    // 5. Verify the event data matches the request
+    if (title !== eventTitle || description !== eventDescription) {
+      throw new Error('Event data mismatch with request');
+    }
+
+    // 6. Create the proposal document in Firestore
+    const docRef = db.collection('daos')
+      .doc(daoAddress)
+      .collection('proposals')
+      .doc(proposalId);
+
+    await docRef.set({
+      proposalId: Number(proposalId),
+      proposer,
+      title: eventTitle,
+      description: eventDescription,
+      status: 'pending',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      votes: {},
+      voters: {},
+      txHash,
+      createdBy: userId
+    });
+
+    console.log('Successfully created proposal:', {
+      daoAddress,
+      proposalId,
+      proposer,
+      userId
+    });
+
+    res.json({ 
+      success: true, 
+      proposalId,
+      txHash 
+    });
+
+  } catch (err: any) {
+    console.error('Error creating proposal:', err);
+    res.status(500).json({ 
+      error: err.message,
+      details: err.details || err.stack
+    });
+  }
 };
 
 // POST /api/daos/:daoAddress/proposals/:proposalId/vote - Vote on proposal
