@@ -80,6 +80,7 @@ export const connectWallet = async (req: Request, res: Response): Promise<void> 
   }
 };
 
+// GET /api/users/:userId/daos - Get user's DAOs
 export const getUserDaos = async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId } = req.params;
@@ -192,39 +193,6 @@ export const getUserDaos = async (req: Request, res: Response): Promise<void> =>
       error: err.message,
       details: err.details
     });
-  }
-};
-
-// GET /api/users/:userId/token-balance - Get user's token balance (live from Amoy RPC)
-// Returns the user's token balance by querying the blockchain using their wallet address from Firestore.
-export const getUserTokenBalance = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { userId } = req.params;
-    // Get user's wallet address from Firestore
-    const userDoc = await db.collection('users').doc(userId).get();
-    if (!userDoc.exists) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-    const walletAddress = userDoc.data()?.wallet?.address;
-    if (!walletAddress) {
-      res.status(400).json({ error: 'User has no linked wallet' });
-      return;
-    }
-    // Get token address from DAO or config (for now, assume one token)
-    // TODO: Make this dynamic if needed
-    const tokenAddress = process.env.TOKEN_ADDRESS;
-    if (!tokenAddress) {
-      res.status(500).json({ error: 'Token address not configured' });
-      return;
-    }
-    const provider = new ethers.JsonRpcProvider(AMOY_RPC_URL);
-    const abi = ["function balanceOf(address) view returns (uint256)"];
-    const token = new ethers.Contract(tokenAddress, abi, provider);
-    const balance = await token.balanceOf(walletAddress);
-    res.json({ walletAddress, tokenAddress, balance: balance.toString() });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
   }
 };
 
