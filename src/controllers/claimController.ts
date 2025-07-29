@@ -131,6 +131,92 @@ export const createClaim = async (req: AuthenticatedRequest, res: Response): Pro
   }
 }; 
 
+export const payoutClaim = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { daoAddress, claimId } = req.params;
+    const { txHash } = req.body;
+    const userId = req.user?.uid;
+
+    if (!userId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    // 1. Get the claim document
+    const claimDoc = await db.collection('daos')
+      .doc(daoAddress)
+      .collection('claims')
+      .doc(claimId)
+      .get();
+
+    if (!claimDoc.exists) {
+      res.status(404).json({ error: 'Claim not found' });
+      return;
+    }
+
+    const claimData = claimDoc.data();
+    if (!claimData) {
+      res.status(404).json({ error: 'Claim data not found' });
+      return;
+    }
+
+    // 2. Verify the claim is approved
+    if (claimData.status !== 'approved') {
+      res.status(400).json({ error: 'Claim must be approved before payout' });
+      return;
+    }
+
+    // 3. Verify the claim hasn't already been paid
+    if (claimData.status === 'paid') {
+      res.status(400).json({ error: 'Claim has already been paid' });
+      return;
+    }
+
+    // 4. Verify the user is the claimant
+    const userWalletAddress = req.user?.wallet?.address;
+    if (!userWalletAddress) {
+      res.status(400).json({ error: 'User wallet address not found' });
+      return;
+    }
+
+    if (ethers.getAddress(claimData.claimant) !== ethers.getAddress(userWalletAddress)) {
+      res.status(403).json({ error: 'Only the claimant can payout the claim' });
+      return;
+    }
+
+    // 5. Verify the transaction
+    const provider = new ethers.JsonRpcProvider(AMOY_RPC_URL);
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) {
+      throw new Error('Transaction not found');
+    }
+    if (receipt.status !== 1) {
+      throw new Error('Transaction failed');
+    }
+
+    // 6. Verify the transaction sender is the claimant
+    if (ethers.getAddress(receipt.from) !== ethers.getAddress(userWalletAddress)) {
+      throw new Error('Transaction sender mismatch');
+    }
+
+    // 7. Update the claim status to paid
+    await claimDoc.ref.update({
+      status: 'paid',
+      payoutTxHash: txHash,
+      paidAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    res.json({ 
+      success: true, 
+      message: 'Claim paid out successfully',
+      txHash 
+    });
+  } catch (err: any) {
+    console.error('Error in payoutClaim:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 export const voteOnClaim = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { daoAddress, claimId } = req.params;
