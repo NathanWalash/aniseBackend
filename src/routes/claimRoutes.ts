@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createClaim, voteOnClaim, listClaims } from '../controllers/claimController';
+import { createClaim, voteOnClaim, listClaims, payoutClaim } from '../controllers/claimController';
 import { verifyFirebaseToken } from '../middlewares/verifyFirebaseToken';
 
 const router = Router();
@@ -15,5 +15,8 @@ router.post('/:daoAddress/claims', createClaim);
 
 // POST /api/daos/:daoAddress/claims/:claimId/vote - Vote on a claim
 router.post('/:daoAddress/claims/:claimId/vote', voteOnClaim);
+
+// POST /api/daos/:daoAddress/claims/:claimId/payout - Payout an approved claim
+router.post('/:daoAddress/claims/:claimId/payout', payoutClaim);
 
 export default router; 

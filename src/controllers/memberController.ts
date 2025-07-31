@@ -25,10 +25,37 @@ export const listMembers = async (req: Request, res: Response): Promise<void> =>
 export const getMember = async (req: Request, res: Response): Promise<void> => {
   try {
     const { daoAddress, memberAddress } = req.params;
-    const doc = await db.collection('daos').doc(daoAddress).collection('members').doc(memberAddress).get();
+    
+    // First try exact match
+    let doc = await db.collection('daos').doc(daoAddress).collection('members').doc(memberAddress).get();
+    
+    // If not found, try case-insensitive lookup
     if (!doc.exists) {
-      // Check if they have a pending join request
-      const joinRequestDoc = await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(memberAddress).get();
+      const membersSnapshot = await db.collection('daos').doc(daoAddress).collection('members').get();
+      const memberDoc = membersSnapshot.docs.find(doc => 
+        doc.id.toLowerCase() === memberAddress.toLowerCase()
+      );
+      
+      if (memberDoc) {
+        doc = memberDoc;
+      }
+    }
+    
+    if (!doc.exists) {
+      // Check if they have a pending join request (also case-insensitive)
+      let joinRequestDoc = await db.collection('daos').doc(daoAddress).collection('joinRequests').doc(memberAddress).get();
+      
+      if (!joinRequestDoc.exists) {
+        const joinRequestsSnapshot = await db.collection('daos').doc(daoAddress).collection('joinRequests').get();
+        const joinRequestDocFound = joinRequestsSnapshot.docs.find(doc => 
+          doc.id.toLowerCase() === memberAddress.toLowerCase()
+        );
+        
+        if (joinRequestDocFound) {
+          joinRequestDoc = joinRequestDocFound;
+        }
+      }
+      
       if (joinRequestDoc.exists && joinRequestDoc.data()?.status === 'pending') {
         res.json({ status: 'pending_request' });
       } else {
@@ -36,6 +63,7 @@ export const getMember = async (req: Request, res: Response): Promise<void> => {
       }
       return;
     }
+    
     res.json({ status: 'member', walletAddress: doc.id, ...doc.data() });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
