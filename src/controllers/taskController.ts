@@ -21,9 +21,13 @@ interface Task {
   title: string;
   description: string;
   creator: string;
+  createdBy: string;
   status: 'BACKLOG' | 'TODO' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-  dueDate: number;
+  dueDate: {
+    _seconds: number;
+    _nanoseconds: number;
+  };
   createdAt: {
     _seconds: number;
     _nanoseconds: number;
@@ -138,11 +142,12 @@ export const createTask = async (req: AuthenticatedRequest, res: Response): Prom
     await docRef.set({
       taskId: Number(taskId),
       creator,
+      createdBy: userId, // Add the user UID
       title: eventTitle,
       description,
       status: 'BACKLOG',
       priority: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'][priority],
-      dueDate,
+      dueDate: admin.firestore.Timestamp.fromMillis(dueDate * 1000),
       createdAt: admin.firestore.Timestamp.now(),
       updatedAt: admin.firestore.Timestamp.now(),
       txHash
@@ -150,7 +155,7 @@ export const createTask = async (req: AuthenticatedRequest, res: Response): Prom
 
     res.json({ 
       taskId: taskId.toString(), 
-      task: { taskId: taskId.toString(), creator, title: eventTitle, description, status: 'BACKLOG', priority: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'][priority], dueDate, createdAt: admin.firestore.Timestamp.now(), updatedAt: admin.firestore.Timestamp.now(), txHash }
+      task: { taskId: taskId.toString(), creator, createdBy: userId, title: eventTitle, description, status: 'BACKLOG', priority: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'][priority], dueDate: admin.firestore.Timestamp.fromMillis(dueDate * 1000), createdAt: admin.firestore.Timestamp.now(), updatedAt: admin.firestore.Timestamp.now(), txHash }
     });
   } catch (err: any) {
     console.error('Error in createTask:', err);
@@ -162,7 +167,7 @@ export const createTask = async (req: AuthenticatedRequest, res: Response): Prom
 export const updateTaskStatus = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { daoAddress, taskId } = req.params;
-    const { status, txHash } = req.body;
+    const { newStatus, txHash } = req.body;
     const userId = req.user?.uid;
 
     if (!userId) {
@@ -182,14 +187,14 @@ export const updateTaskStatus = async (req: AuthenticatedRequest, res: Response)
 
     // 2. Update Firestore
     const statusMap = ['BACKLOG', 'TODO', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
-    const newStatus = statusMap[status] as Task['status'];
+    const status = statusMap[newStatus] as Task['status'];
     
     await db.collection('daos')
       .doc(daoAddress)
       .collection('tasks')
       .doc(taskId)
       .update({
-        status: newStatus,
+        status: status,
         updatedAt: admin.firestore.Timestamp.now()
       });
 
@@ -241,7 +246,7 @@ export const updateTask = async (req: AuthenticatedRequest, res: Response): Prom
         title,
         description,
         priority: newPriority,
-        dueDate,
+        dueDate: admin.firestore.Timestamp.fromMillis(dueDate * 1000),
         updatedAt: admin.firestore.Timestamp.now()
       });
 
