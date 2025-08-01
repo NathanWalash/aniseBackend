@@ -100,48 +100,59 @@ export const createAnnouncement = async (req: AuthenticatedRequest, res: Respons
       throw new Error('Transaction failed');
     }
 
-    // 2. Parse logs to verify createAnnouncement function call
-    const iface = new ethers.Interface(AnnouncementModuleAbi.abi);
-    const logs = receipt.logs;
-    let announcementId: number | null = null;
-    
-    for (const log of logs) {
-      try {
-        const parsedLog = iface.parseLog(log);
-        if (parsedLog && parsedLog.name === 'AnnouncementCreated') {
-          announcementId = parsedLog.args.announcementId;
-          break;
-        }
-      } catch (e) {
-        // Skip logs that don't match our interface
-        continue;
-      }
+    // 2. Get the event args using verifyTransaction utility
+    const eventArgs = await verifyTransaction({
+      txHash,
+      expectedEventSig: 'AnnouncementCreated(uint256,string,address,uint8)',
+      abi: AnnouncementModuleAbi.abi
+    });
+
+    // 3. Extract data from event args
+    const announcementId = eventArgs[0].toString();  // uint256 announcementId
+    const eventTitle = eventArgs[1];                 // string title
+    const creator = eventArgs[2];                    // address creator
+    const eventType = Number(eventArgs[3]);          // uint8 announcementType
+
+    // 4. Verify the transaction sender matches the creator
+    if (ethers.getAddress(creator) !== ethers.getAddress(receipt.from)) {
+      throw new Error('Transaction sender mismatch');
     }
 
-    if (announcementId === null) {
-      throw new Error('Announcement creation not found in transaction logs');
+    // 5. Verify the event data matches the request
+    if (title !== eventTitle) {
+      throw new Error('Event data mismatch with request');
     }
 
-    // 3. Store in Firestore
-    const announcementData: Omit<Announcement, 'announcementId'> = {
-      title,
-      content,
-      announcementType: ['GENERAL', 'URGENT', 'INFO'][announcementType] as Announcement['announcementType'],
-      creator: req.user?.wallet?.address || '',
-      expiresAt,
-      createdAt: admin.firestore.Timestamp.now() as any,
-      txHash
-    };
-
-    await db.collection('daos')
+    // 6. Create the announcement document in Firestore
+    const docRef = db.collection('daos')
       .doc(daoAddress)
       .collection('announcements')
-      .doc(announcementId.toString())
-      .set(announcementData);
+      .doc(announcementId);
+
+    const typeNames = ['GENERAL', 'URGENT', 'INFO'];
+    await docRef.set({
+      announcementId: Number(announcementId),
+      creator,
+      title: eventTitle,
+      content,
+      announcementType: typeNames[eventType],
+      expiresAt: admin.firestore.Timestamp.fromMillis(expiresAt * 1000),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      txHash,
+      createdBy: userId
+    });
+
+    console.log('Successfully created announcement:', {
+      daoAddress,
+      announcementId,
+      creator,
+      userId
+    });
 
     res.json({ 
-      announcementId: announcementId.toString(), 
-      announcement: { announcementId: announcementId.toString(), ...announcementData }
+      success: true, 
+      announcementId,
+      txHash 
     });
   } catch (err: any) {
     console.error('Error in createAnnouncement:', err);
