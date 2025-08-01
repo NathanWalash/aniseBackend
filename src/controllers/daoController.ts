@@ -49,6 +49,7 @@ export const createDao = async (req: Request, res: Response): Promise<void> => {
       blockNumber: receipt.blockNumber,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       modules, // <-- directly from frontend, keyed by module type
+      memberCount: 1, // Start with 1 member (the creator)
     };
     await db.collection('daos').doc(daoAddress).set(daoDoc);
 
@@ -78,19 +79,82 @@ export const createDao = async (req: Request, res: Response): Promise<void> => {
 };
 
 // GET /api/daos - List/search all DAOs
-// Returns a paginated list of all DAOs from the 'daos' collection, ordered by creation time.
+// Returns a paginated list of all DAOs from the 'daos' collection, with filtering and sorting.
 export const listDaos = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { limit = 20, startAfter } = req.query;
-    let query = db.collection('daos').orderBy('createdAt', 'desc').limit(Number(limit));
+    const { 
+      limit = 20, 
+      startAfter, 
+      search, 
+      sortBy = 'recent', 
+      memberCount 
+    } = req.query;
+
+    console.log('[listDaos] Query params:', { search, sortBy, memberCount, limit });
+
+    // Start with basic query
+    let query: admin.firestore.Query<admin.firestore.DocumentData> = db.collection('daos');
+
+    // Apply sorting
+    if (sortBy === 'recent') {
+      query = query.orderBy('createdAt', 'desc');
+    } else if (sortBy === 'popular') {
+      // For popular, we'll sort by memberCount in descending order
+      query = query.orderBy('memberCount', 'desc');
+    } else if (memberCount && memberCount !== 'any') {
+      // For member count filters, sort by memberCount in ascending order
+      query = query.orderBy('memberCount', 'asc');
+    } else {
+      // Default to recent
+      query = query.orderBy('createdAt', 'desc');
+    }
+
+    // Apply limit
+    query = query.limit(Number(limit));
+
+    // Apply pagination
     if (startAfter) {
       const startDoc = await db.collection('daos').doc(String(startAfter)).get();
       if (startDoc.exists) query = query.startAfter(startDoc);
     }
+
+    // Get the data
     const snapshot = await query.get();
-    const daos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    let daos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // Apply client-side filtering for search and member count
+    if (search) {
+      const searchLower = String(search).toLowerCase();
+      daos = daos.filter((dao: any) => {
+        const name = dao.metadata?.name?.toLowerCase() || '';
+        const description = dao.metadata?.description?.toLowerCase() || '';
+        return name.includes(searchLower) || description.includes(searchLower);
+      });
+    }
+
+    // Apply member count filtering
+    if (memberCount && memberCount !== 'any') {
+      daos = daos.filter((dao: any) => {
+        const count = dao.memberCount || 1;
+        switch (memberCount) {
+          case '1-10':
+            return count >= 1 && count <= 10;
+          case '11-50':
+            return count >= 11 && count <= 50;
+          case '51-100':
+            return count >= 51 && count <= 100;
+          case '100+':
+            return count > 100;
+          default:
+            return true;
+        }
+      });
+    }
+
+    console.log(`[listDaos] Returning ${daos.length} DAOs after filtering`);
     res.json({ daos });
   } catch (err: any) {
+    console.error('[listDaos] Error:', err);
     res.status(500).json({ error: err.message });
   }
 };
