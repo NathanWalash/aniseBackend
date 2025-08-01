@@ -12,7 +12,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test:payment": "ts-node tests/paymentApi.test.ts",
-    "test:webhook": "jest tests/webhookApi.test.ts"
+    "test:webhook": "jest tests/webhookApi.test.ts",
+    "update-member-counts": "ts-node src/utils/updateMemberCounts.ts"
   },
   "repository": {
     "type": "git",
@@ -26,6 +27,7 @@
   },
   "homepage": "https://github.com/NathanWalash/aniseBackend#readme",
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.2.0",
     "axios": "^1.10.0",
     "cors": "^2.8.5",
     "dotenv": "^17.0.0",

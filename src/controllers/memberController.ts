@@ -3,6 +3,7 @@ import admin from '../firebaseAdmin';
 import { verifyTransaction } from '../utils/verifyTransaction';
 import MemberModuleAbiJson from '../abis/MemberModule.json';
 import { ethers } from 'ethers';
+import { updateDaoMemberCount } from '../utils/updateMemberCounts';
 
 const db = admin.firestore();
 const MemberModuleAbi = MemberModuleAbiJson.abi || MemberModuleAbiJson;
@@ -263,6 +264,9 @@ export const approveJoinRequest = async (req: Request, res: Response): Promise<v
       });
     }
 
+    // 8. Update the DAO's member count
+    await updateDaoMemberCount(daoAddress);
+
     console.log('Successfully approved join request for:', checksumMemberAddress);
     res.json({ success: true });
   } catch (err: any) {
@@ -370,6 +374,36 @@ export const changeMemberRole = async (req: Request, res: Response): Promise<voi
 // POST /api/daos/:daoAddress/members/:memberAddress/remove - Remove member (admin only)
 // Frontend: Admin removes a member. Backend deletes or updates the member doc.
 export const removeMember = async (req: Request, res: Response): Promise<void> => {
-  // TODO: Validate admin, remove member from 'members' subcollection
-  res.status(501).json({ error: 'Not implemented' });
+  try {
+    const { daoAddress, memberAddress } = req.params;
+    
+    // 1. Verify the admin is making this request
+    const adminAddress = (req as any).user?.wallet?.address;
+    if (!adminAddress) {
+      res.status(401).json({ error: 'Admin wallet not found' });
+      return;
+    }
+
+    const checksumAdminAddress = ethers.getAddress(adminAddress);
+    const checksumMemberAddress = ethers.getAddress(memberAddress);
+
+    // 2. Verify admin permissions
+    const adminDoc = await db.collection('daos').doc(daoAddress).collection('members').doc(checksumAdminAddress).get();
+    if (!adminDoc.exists || adminDoc.data()?.role !== 'Admin') {
+      res.status(403).json({ error: 'Not an admin' });
+      return;
+    }
+
+    // 3. Remove the member
+    await db.collection('daos').doc(daoAddress).collection('members').doc(checksumMemberAddress).delete();
+
+    // 4. Update the DAO's member count
+    await updateDaoMemberCount(daoAddress);
+
+    console.log('Successfully removed member:', checksumMemberAddress);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('Error in removeMember:', err);
+    res.status(500).json({ error: err.message });
+  }
 }; 
