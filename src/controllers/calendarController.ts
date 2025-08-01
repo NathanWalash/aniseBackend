@@ -24,6 +24,7 @@ interface Event {
   endTime: number;
   location: string;
   creator: string;
+  createdBy: string;
   createdAt: {
     _seconds: number;
     _nanoseconds: number;
@@ -163,6 +164,7 @@ export const createEvent = async (req: AuthenticatedRequest, res: Response): Pro
     await docRef.set({
       eventId: Number(eventId),
       creator,
+      createdBy: userId, // Add the Firebase UID
       title: eventTitle,
       description,
       startTime,
